@@ -64,10 +64,16 @@ Work is blocked on these. Listed first because they gate implementation.
 | Migrate to `gemini-2.5-flash-lite` | ⬜ |
 | Audit all 28 files for missing auth | ⬜ |
 | Cross-role access tests | ⬜ Blocked on `00-foundations` |
-| **Upgrade `jspdf` — CRITICAL (LFI + PDF injection)** | ⬜ New |
-| **Upgrade `next` 15.4.8 — high, npm-deprecated for CVE** | ⬜ New |
-| Upgrade `xlsx`, `postcss`, `sharp` — high | ⬜ New |
-| CI fails on new critical/high advisories | ⬜ |
+| **Upgrade `jspdf` 3.0.1 → 4.2.1 — cleared CRITICAL** | ✅ Done |
+| **Upgrade `next` 15.4.8 → 16.3.0, React → 19.2.8** | ✅ Done |
+| Replace abandoned `xlsx` with `write-excel-file` | ✅ Done |
+| `postcss` / `sharp` — resolved by the Next upgrade | ✅ Done |
+| **`npm audit`: 0 vulnerabilities** (was 1 critical + 4 high) | ✅ Done |
+| Commit lockfile; un-ignore `.env.example` | ✅ Done |
+| `.env.example` documenting the env contract | ✅ Done |
+| Derive Convex image host from env | ✅ Done |
+| CI fails on new critical/high advisories | ⬜ Blocked on `00-foundations` |
+| Verify PDF + Excel export against real data | ⬜ **Needs manual check** |
 
 ### 01b — Email · `specs/01b-email.md`
 
