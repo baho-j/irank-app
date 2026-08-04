@@ -463,34 +463,64 @@ export default defineSchema({
   judging_scores: defineTable({
     debate_id: v.id("debates"),
     judge_id: v.id("users"),
-    winning_team_id: v.id("teams"),
-    winning_position: v.union(
+    winning_team_id: v.optional(v.id("teams")),
+    winning_position: v.optional(v.union(
       v.literal("proposition"),
       v.literal("opposition")
-    ),
+    )),
+
     speaker_scores: v.array(v.object({
       speaker_id: v.id("users"),
       team_id: v.id("teams"),
-      position: v.string(),
-      score: v.number(),
+      position: v.union(
+        v.literal("first"),
+        v.literal("second"),
+        v.literal("third"),
+        v.literal("reply")
+      ),
+      speech_type: v.union(v.literal("substantive"), v.literal("reply")),
+      style: v.number(),
+      content: v.number(),
+      strategy: v.number(),
+      poi_modifier: v.optional(v.number()),
+      total: v.number(),
       comments: v.optional(v.string()),
-      role_fulfillment: v.optional(v.number()),
-      argumentation_clash: v.optional(v.number()),
-      content_development: v.optional(v.number()),
-      style_strategy_delivery: v.optional(v.number()),
       bias_detected: v.optional(v.boolean()),
-      bias_explanation: v.optional(v.string())
+      bias_explanation: v.optional(v.string()),
     })),
+
+    rfd: v.optional(v.string()),
     notes: v.optional(v.string()),
-    submitted_at: v.number(),
-    feedback_submitted: v.optional(v.boolean()),
+
+    submission_state: v.union(
+      v.literal("not_started"),
+      v.literal("in_progress"),
+      v.literal("submitted")
+    ),
+
+    flagged: v.optional(v.boolean()),
+    flag_reason: v.optional(v.string()),
+    flagged_by: v.optional(v.id("users")),
+    flagged_at: v.optional(v.number()),
+
+    ballot_edits: v.optional(v.array(v.object({
+      editor_id: v.id("users"),
+      reason: v.string(),
+      previous_speaker_scores: v.string(),
+      previous_winning_team_id: v.optional(v.id("teams")),
+      edited_at: v.number(),
+    }))),
+
+    submitted_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.optional(v.number()),
   })
     .index("by_debate_id", ["debate_id"])
     .index("by_judge_id", ["judge_id"])
     .index("by_debate_id_judge_id", ["debate_id", "judge_id"])
-    .index("by_submitted_at", ["submitted_at"]),
+    .index("by_submitted_at", ["submitted_at"])
+    .index("by_debate_id_submission_state", ["debate_id", "submission_state"])
+    .index("by_flagged", ["flagged"]),
 
   judge_results: defineTable({
     tournament_id: v.id("tournaments"),
