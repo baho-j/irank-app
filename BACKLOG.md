@@ -37,18 +37,35 @@ Work is blocked on these. Listed first because they gate implementation.
 
 | Item | Status |
 |---|---|
-| Vitest + convex-test setup | ⬜ |
-| React Testing Library setup | ⬜ |
-| Playwright setup | ⬜ |
-| Tournament fixtures (6–8 / 24–32 / 64+ teams) | ⬜ |
-| `test` / `typecheck` / `format` scripts | ⬜ |
-| CI workflow on PR | ⬜ |
-| Auth-coverage CI check | ⬜ |
-| Commit lockfile | ⬜ |
-| `.env.example` | ⬜ |
-| Remove hardcoded Convex host | ⬜ |
-| Remove `ignoreDuringBuilds`, fix lint | ⬜ |
-| `CLAUDE.md` | ✅ |
+| Vitest + convex-test setup (3 projects) | ✅ Done |
+| React Testing Library setup | ✅ Done |
+| `convex/test_helpers.ts` — signed-token session seeding | ✅ Done |
+| `test` / `test:watch` / `test:coverage` / `typecheck` scripts | ✅ Done |
+| CI workflow on PR (typecheck, test, build, audit) | ✅ Done |
+| Audit gate fails on new critical/high advisories | ✅ Done |
+| Migrate ESLint to flat config (v9 requirement) | ✅ Done |
+| Commit lockfile | ✅ Done |
+| `.env.example` | ✅ Done |
+| Remove hardcoded Convex host | ✅ Done |
+| Remove `ignoreDuringBuilds` | ✅ Done |
+| `CLAUDE.md` | ✅ Done |
+| **Fix 121 React Compiler lint violations** | ⬜ See below |
+| Playwright setup (E2E, 360px mobile) | ⬜ |
+| Tournament fixtures (6–8 / 24–32 / 64+ teams) | ⬜ Blocked on `04-pairing` |
+| Auth-coverage reflective test (all public functions) | ⬜ |
+
+**Current tests: 48 passing** — analytics authorization (36), `updateRecording` authorization (5), Excel export adapter (7).
+
+**Lint debt.** `eslint-config-next` 16 enabled React Compiler rules that flag 121 pre-existing errors, previously hidden by `ignoreDuringBuilds: true`:
+
+| Rule | Errors | Why it matters |
+|---|---|---|
+| `react-hooks/set-state-in-effect` | 54 | Cascading re-renders — directly relevant to the app-speed goal |
+| `react-hooks/static-components` | 30 | Components redefined each render, losing state |
+| `react-hooks/purity` | 29 | Impure render, e.g. the `Math.random()` in rankings |
+| `react-hooks/refs`, `preserve-manual-memoization`, `immutability` | 8 | |
+
+Lint runs in CI with `continue-on-error` so violations stay visible without blocking. Many sit in `hooks/use-offline.tsx`, which `03-offline.md` replaces outright — fix that first, then re-count.
 
 ### 01 — Security · `specs/01-security.md`
 
