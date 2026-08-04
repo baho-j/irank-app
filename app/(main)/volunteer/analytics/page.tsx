@@ -50,7 +50,7 @@ import {
   ThumbsUp,
   GraduationCap,
 } from "lucide-react";
-import * as XLSX from 'xlsx'
+import { downloadExcel } from '@/lib/export/excel'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu"
@@ -345,33 +345,29 @@ export default function VolunteerAnalyticsPage() {
     }
 
     try {
-      const workbook = XLSX.utils.book_new()
-
-      if (judgingData.judging_trends) {
-        const trendsWS = XLSX.utils.json_to_sheet(judgingData.judging_trends)
-        XLSX.utils.book_append_sheet(workbook, trendsWS, "Judging Trends")
-      }
-
-      if (judgingData.tournament_contributions) {
-        const contributionsWS = XLSX.utils.json_to_sheet(judgingData.tournament_contributions.map(tc => ({
-          tournament_name: tc.tournament_name,
-          role: tc.role,
-          debates_judged: tc.debates_judged,
-          contribution_score: tc.contribution_score,
-          organizer_rating: tc.organizer_rating,
-        })))
-        XLSX.utils.book_append_sheet(workbook, contributionsWS, "Tournament Contributions")
-      }
-
-      if (judgingData.format_expertise) {
-        const expertiseWS = XLSX.utils.json_to_sheet(judgingData.format_expertise)
-        XLSX.utils.book_append_sheet(workbook, expertiseWS, "Format Expertise")
-      }
-
       const timestamp = new Date().toISOString().split('T')[0]
-      const filename = `volunteer-analytics-${timestamp}.xlsx`
 
-      XLSX.writeFile(workbook, filename)
+      await downloadExcel([
+        {
+          name: "Judging Trends",
+          rows: judgingData.judging_trends ?? [],
+        },
+        {
+          name: "Tournament Contributions",
+          rows: (judgingData.tournament_contributions ?? []).map(tc => ({
+            tournament_name: tc.tournament_name,
+            role: tc.role,
+            debates_judged: tc.debates_judged,
+            contribution_score: tc.contribution_score,
+            organizer_rating: tc.organizer_rating,
+          })),
+        },
+        {
+          name: "Format Expertise",
+          rows: judgingData.format_expertise ?? [],
+        },
+      ], `volunteer-analytics-${timestamp}.xlsx`)
+
       toast.success("Excel file downloaded successfully!")
     } catch (error) {
       console.error('Error exporting to Excel:', error)

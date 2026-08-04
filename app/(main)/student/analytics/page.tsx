@@ -53,7 +53,7 @@ import {
   School,
   Heart,
 } from "lucide-react";
-import * as XLSX from 'xlsx'
+import { downloadExcel } from '@/lib/export/excel'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu"
@@ -421,39 +421,35 @@ export default function StudentAnalyticsPage() {
     }
 
     try {
-      const workbook = XLSX.utils.book_new()
-
-      if (performanceData.performance_trends) {
-        const trendsWS = XLSX.utils.json_to_sheet(performanceData.performance_trends.map(trend => ({
-          tournament_name: trend.tournament_name,
-          date: new Date(trend.date).toLocaleDateString(),
-          speaker_rank: trend.speaker_rank,
-          speaker_points: trend.speaker_points,
-          team_rank: trend.team_rank,
-          avg_score: trend.avg_score,
-        })))
-        XLSX.utils.book_append_sheet(workbook, trendsWS, "Performance Trends")
-      }
-
-      if (performanceData.partner_analysis) {
-        const partnersWS = XLSX.utils.json_to_sheet(performanceData.partner_analysis.map(partner => ({
-          partner_name: partner.partner_name,
-          tournaments_together: partner.tournaments_together,
-          win_rate_together: partner.win_rate_together,
-          chemistry_score: partner.chemistry_score,
-        })))
-        XLSX.utils.book_append_sheet(workbook, partnersWS, "Partner Analysis")
-      }
-
-      if (performanceData.tournament_analysis) {
-        const tournamentsWS = XLSX.utils.json_to_sheet(performanceData.tournament_analysis.best_formats)
-        XLSX.utils.book_append_sheet(workbook, tournamentsWS, "Tournament Analysis")
-      }
-
       const timestamp = new Date().toISOString().split('T')[0]
-      const filename = `student-analytics-${timestamp}.xlsx`
 
-      XLSX.writeFile(workbook, filename)
+      await downloadExcel([
+        {
+          name: "Performance Trends",
+          rows: (performanceData.performance_trends ?? []).map(trend => ({
+            tournament_name: trend.tournament_name,
+            date: new Date(trend.date).toLocaleDateString(),
+            speaker_rank: trend.speaker_rank,
+            speaker_points: trend.speaker_points,
+            team_rank: trend.team_rank,
+            avg_score: trend.avg_score,
+          })),
+        },
+        {
+          name: "Partner Analysis",
+          rows: (performanceData.partner_analysis ?? []).map(partner => ({
+            partner_name: partner.partner_name,
+            tournaments_together: partner.tournaments_together,
+            win_rate_together: partner.win_rate_together,
+            chemistry_score: partner.chemistry_score,
+          })),
+        },
+        {
+          name: "Tournament Analysis",
+          rows: performanceData.tournament_analysis?.best_formats ?? [],
+        },
+      ], `student-analytics-${timestamp}.xlsx`)
+
       toast.success("Excel file downloaded successfully!")
     } catch (error) {
       console.error('Error exporting to Excel:', error)

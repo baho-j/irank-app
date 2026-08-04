@@ -67,7 +67,7 @@ import {
   SquareChartGantt,
   NotebookTabs,
 } from "lucide-react";
-import * as XLSX from 'xlsx'
+import { downloadExcel } from '@/lib/export/excel'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu"
@@ -549,43 +549,39 @@ export default function SchoolAnalyticsPage() {
     }
 
     try {
-      const workbook = XLSX.utils.book_new()
-
-      if (performanceData.performance_trends) {
-        const trendsWS = XLSX.utils.json_to_sheet(performanceData.performance_trends)
-        XLSX.utils.book_append_sheet(workbook, trendsWS, "Performance Trends")
-      }
-
-      if (performanceData.student_development) {
-        const studentsWS = XLSX.utils.json_to_sheet(performanceData.student_development.map(student => ({
-          student_name: student.student_name,
-          avg_speaker_score: student.current_performance.avg_speaker_score,
-          total_tournaments: student.current_performance.total_tournaments,
-          best_rank: student.current_performance.best_rank,
-          trend: student.improvement_trajectory.trend,
-          improvement_rate: student.improvement_trajectory.improvement_rate,
-          consistency_score: student.current_performance.consistency_score,
-        })))
-        XLSX.utils.book_append_sheet(workbook, studentsWS, "Student Development")
-      }
-
-      if (performanceData.team_performance) {
-        const teamPerfWS = XLSX.utils.json_to_sheet(performanceData.team_performance.map(team => ({
-          team_name: team.team_name,
-          tournament_name: team.tournament_name,
-          rank: team.performance.rank,
-          wins: team.performance.wins,
-          total_points: team.performance.total_points,
-          avg_speaker_score: team.performance.avg_speaker_score,
-          debates_count: team.performance.debates_count,
-        })))
-        XLSX.utils.book_append_sheet(workbook, teamPerfWS, "Team Performance")
-      }
-
       const timestamp = new Date().toISOString().split('T')[0]
-      const filename = `school-analytics-${timestamp}.xlsx`
 
-      XLSX.writeFile(workbook, filename)
+      await downloadExcel([
+        {
+          name: "Performance Trends",
+          rows: performanceData.performance_trends ?? [],
+        },
+        {
+          name: "Student Development",
+          rows: (performanceData.student_development ?? []).map(student => ({
+            student_name: student.student_name,
+            avg_speaker_score: student.current_performance.avg_speaker_score,
+            total_tournaments: student.current_performance.total_tournaments,
+            best_rank: student.current_performance.best_rank,
+            trend: student.improvement_trajectory.trend,
+            improvement_rate: student.improvement_trajectory.improvement_rate,
+            consistency_score: student.current_performance.consistency_score,
+          })),
+        },
+        {
+          name: "Team Performance",
+          rows: (performanceData.team_performance ?? []).map(team => ({
+            team_name: team.team_name,
+            tournament_name: team.tournament_name,
+            rank: team.performance.rank,
+            wins: team.performance.wins,
+            total_points: team.performance.total_points,
+            avg_speaker_score: team.performance.avg_speaker_score,
+            debates_count: team.performance.debates_count,
+          })),
+        },
+      ], `school-analytics-${timestamp}.xlsx`)
+
       toast.success("Excel file downloaded successfully!")
     } catch (error) {
       console.error('Error exporting to Excel:', error)

@@ -36,7 +36,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from '../ui/skeleton';
 import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
-import * as XLSX from "xlsx";
+import { downloadExcel } from "@/lib/export/excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -283,8 +283,6 @@ const ExportDialog = ({
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
-      const wb = XLSX.utils.book_new();
-
       let data: any[] = [];
       const scope = includeElimination ? 'Full Tournament' : 'Preliminary Rounds';
 
@@ -350,11 +348,10 @@ const ExportDialog = ({
           break;
       }
 
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Rankings`);
-
+      const sheetName = `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Rankings`;
       const fileName = `${tournament.name}_${activeTab}_Rankings_${scope.replace(' ', '_')}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+
+      await downloadExcel([{ name: sheetName, rows: data }], fileName);
 
       toast.success("Excel file downloaded!");
     } catch (error) {

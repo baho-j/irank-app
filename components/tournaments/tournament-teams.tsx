@@ -48,7 +48,7 @@ import {
   FileSpreadsheet, FileText, Download,
   Loader2
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import { downloadExcel } from "@/lib/export/excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useDebounce } from "@/hooks/use-debounce"
@@ -505,12 +505,10 @@ export function TournamentTeams({
         'Invitation Code': team.invitation_code || 'N/A'
       }));
 
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, "Teams");
-
-      const fileName = `${tournament.name}_Teams.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      await downloadExcel(
+        [{ name: "Teams", rows: data }],
+        `${tournament.name}_Teams.xlsx`
+      );
 
       toast.success("Excel file downloaded!");
     } catch (error) {

@@ -54,7 +54,7 @@ import {
   Camera,
   AlertTriangle, SquareChartGantt, DollarSign, BarChart2, Copy, Check
 } from "lucide-react";
-import * as XLSX from 'xlsx'
+import { downloadExcel } from '@/lib/export/excel'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { useDebounce } from "@/hooks/use-debounce"
@@ -602,78 +602,43 @@ export default function AdminAnalyticsPage() {
     }
 
     try {
-      const workbook = XLSX.utils.book_new()
+      const timestamp = new Date().toISOString().split('T')[0]
 
-      if (exportData.overview) {
-        const overviewWS = XLSX.utils.json_to_sheet([
+      const overviewRows = exportData.overview
+        ? [
           { Metric: "Total Tournaments", Value: exportData.overview.total_tournaments },
           { Metric: "Active Tournaments", Value: exportData.overview.active_tournaments },
           { Metric: "Total Users", Value: exportData.overview.total_users },
           { Metric: "Total Schools", Value: exportData.overview.total_schools },
           { Metric: "Total Debates", Value: exportData.overview.total_debates },
-        ])
-        XLSX.utils.book_append_sheet(workbook, overviewWS, "Overview")
-      }
+        ]
+        : []
 
-      if (exportData.tournaments?.tournament_trends) {
-        const trendsWS = XLSX.utils.json_to_sheet(exportData.tournaments.tournament_trends)
-        XLSX.utils.book_append_sheet(workbook, trendsWS, "Tournament Trends")
-      }
-
-      if (exportData.tournaments?.format_distribution) {
-        const formatWS = XLSX.utils.json_to_sheet(exportData.tournaments.format_distribution)
-        XLSX.utils.book_append_sheet(workbook, formatWS, "Format Distribution")
-      }
-
-      if (exportData.users?.user_growth) {
-        const userGrowthWS = XLSX.utils.json_to_sheet(exportData.users.user_growth)
-        XLSX.utils.book_append_sheet(workbook, userGrowthWS, "User Growth")
-      }
-
-      if (exportData.users?.role_distribution) {
-        const roleWS = XLSX.utils.json_to_sheet(exportData.users.role_distribution)
-        XLSX.utils.book_append_sheet(workbook, roleWS, "Role Distribution")
-      }
-
-      if (exportData.financial) {
-        if (exportData.financial.revenue_trends) {
-          const revenueWS = XLSX.utils.json_to_sheet(exportData.financial.revenue_trends)
-          XLSX.utils.book_append_sheet(workbook, revenueWS, "Revenue Trends")
-        }
-
-        if (exportData.financial.payment_distribution) {
-          const paymentWS = XLSX.utils.json_to_sheet(exportData.financial.payment_distribution)
-          XLSX.utils.book_append_sheet(workbook, paymentWS, "Payment Methods")
-        }
-
-        if (exportData.financial.tournament_revenue) {
-          const tourneyRevenueWS = XLSX.utils.json_to_sheet(exportData.financial.tournament_revenue)
-          XLSX.utils.book_append_sheet(workbook, tourneyRevenueWS, "Tournament Revenue")
-        }
-      }
-
-      if (exportData.performance) {
-        if (exportData.performance.tournament_rankings) {
-          const rankingsWS = XLSX.utils.json_to_sheet(exportData.performance.tournament_rankings.map((t: { tournament_name: any; format: any; date: string | number | Date; team_rankings: string | any[]; speaker_rankings: string | any[] }) => ({
+      await downloadExcel([
+        { name: "Overview", rows: overviewRows },
+        { name: "Tournament Trends", rows: exportData.tournaments?.tournament_trends ?? [] },
+        { name: "Format Distribution", rows: exportData.tournaments?.format_distribution ?? [] },
+        { name: "User Growth", rows: exportData.users?.user_growth ?? [] },
+        { name: "Role Distribution", rows: exportData.users?.role_distribution ?? [] },
+        { name: "Revenue Trends", rows: exportData.financial?.revenue_trends ?? [] },
+        { name: "Payment Methods", rows: exportData.financial?.payment_distribution ?? [] },
+        { name: "Tournament Revenue", rows: exportData.financial?.tournament_revenue ?? [] },
+        {
+          name: "Tournament Rankings",
+          rows: (exportData.performance?.tournament_rankings ?? []).map((t: { tournament_name: any; format: any; date: string | number | Date; team_rankings: string | any[]; speaker_rankings: string | any[] }) => ({
             tournament: t.tournament_name,
             format: t.format,
             date: new Date(t.date).toLocaleDateString(),
             teams_count: t.team_rankings.length,
-            speakers_count: t.speaker_rankings.length
-          })))
-          XLSX.utils.book_append_sheet(workbook, rankingsWS, "Tournament Rankings")
-        }
+            speakers_count: t.speaker_rankings.length,
+          })),
+        },
+        {
+          name: "Judge Consistency",
+          rows: exportData.performance?.judge_performance?.consistency_scores ?? [],
+        },
+      ], `iRankHub-Analytics-${timestamp}.xlsx`)
 
-        if (exportData.performance.judge_performance?.consistency_scores) {
-          const judgeConsistencyWS = XLSX.utils.json_to_sheet(exportData.performance.judge_performance.consistency_scores)
-          XLSX.utils.book_append_sheet(workbook, judgeConsistencyWS, "Judge Consistency")
-        }
-      }
-
-      const timestamp = new Date().toISOString().split('T')[0]
-      const filename = `iRankHub-Analytics-${timestamp}.xlsx`
-
-      XLSX.writeFile(workbook, filename)
       toast.success("Excel file downloaded successfully!")
     } catch (error) {
       console.error('Error exporting to Excel:', error)

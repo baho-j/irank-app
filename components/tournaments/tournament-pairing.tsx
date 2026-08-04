@@ -44,7 +44,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
+import { downloadExcel, type ExcelSheet } from "@/lib/export/excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -550,44 +550,37 @@ const SharePairingsDialog = ({
         fileName = `${tournament.name}_Rounds_${selectedRounds.join('-')}_Pairings.xlsx`;
       }
 
-      const wb = XLSX.utils.book_new();
+      const toRow = (pairing: any, fallbackIndex: number) => ({
+        'Room': pairing.room_name || `Room ${fallbackIndex + 1}`,
+        'Proposition Team': pairing.proposition_team?.name || 'N/A',
+        'Opposition Team': pairing.opposition_team?.name || (pairing.is_public_speaking ? 'Public Speaking' : 'N/A'),
+        'Judges': pairing.judge_details?.map((j: any) => j.name).join(', ') || 'No judges',
+        'Head Judge': pairing.head_judge?.name || 'N/A',
+        'Type': pairing.is_public_speaking ? 'Public Speaking' : 'Debate',
+        'Conflicts': pairing.pairing_conflicts?.length || 0
+      });
+
+      let sheets: ExcelSheet[];
 
       if (exportType === 'multiple') {
-        const roundGroups = dataToExport.reduce((acc, pairing) => {
-          const round = pairing.round_number || roundNumber;
+        const roundGroups = dataToExport.reduce((acc: Record<string, any[]>, pairing) => {
+          const round = String(pairing.round_number || roundNumber);
           if (!acc[round]) acc[round] = [];
-          acc[round].push({
-            'Room': pairing.room_name || `Room ${acc[round].length + 1}`,
-            'Proposition Team': pairing.proposition_team?.name || 'N/A',
-            'Opposition Team': pairing.opposition_team?.name || (pairing.is_public_speaking ? 'Public Speaking' : 'N/A'),
-            'Judges': pairing.judge_details?.map((j: any) => j.name).join(', ') || 'No judges',
-            'Head Judge': pairing.head_judge?.name || 'N/A',
-            'Type': pairing.is_public_speaking ? 'Public Speaking' : 'Debate',
-            'Conflicts': pairing.pairing_conflicts?.length || 0
-          });
+          acc[round].push(toRow(pairing, acc[round].length));
           return acc;
         }, {});
 
-        Object.entries(roundGroups).forEach(([round, data]) => {
-          const ws = XLSX.utils.json_to_sheet(data as any[]);
-          XLSX.utils.book_append_sheet(wb, ws, `Round ${round}`);
-        });
+        sheets = Object.entries(roundGroups)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([round, rows]) => ({ name: `Round ${round}`, rows }));
       } else {
-        const data = dataToExport.map((pairing, index) => ({
-          'Room': pairing.room_name || `Room ${index + 1}`,
-          'Proposition Team': pairing.proposition_team?.name || 'N/A',
-          'Opposition Team': pairing.opposition_team?.name || (pairing.is_public_speaking ? 'Public Speaking' : 'N/A'),
-          'Judges': pairing.judge_details?.map((j: any) => j.name).join(', ') || 'No judges',
-          'Head Judge': pairing.head_judge?.name || 'N/A',
-          'Type': pairing.is_public_speaking ? 'Public Speaking' : 'Debate',
-          'Conflicts': pairing.pairing_conflicts?.length || 0
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(data);
-        XLSX.utils.book_append_sheet(wb, ws, `Round ${roundNumber}`);
+        sheets = [{
+          name: `Round ${roundNumber}`,
+          rows: dataToExport.map(toRow),
+        }];
       }
 
-      XLSX.writeFile(wb, fileName);
+      await downloadExcel(sheets, fileName);
       toast.success("Excel file downloaded!");
     } catch (error) {
       toast.error("Failed to export Excel file");
