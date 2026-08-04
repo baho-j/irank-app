@@ -45,9 +45,17 @@ function OfflineBanner() {
 }
 
 export function ConvexOfflineProvider({ children }: ConvexOfflineProviderProps) {
-    const [convexClient] = useState(() =>
-      new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!)
-    );
+    const [convexClient] = useState(() => {
+        const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+
+        if (!convexUrl) {
+            throw new Error(
+              "NEXT_PUBLIC_CONVEX_URL is not set. Copy .env.example to .env.local and set it to your Convex deployment URL."
+            );
+        }
+
+        return new ConvexReactClient(convexUrl);
+    });
 
     return (
       <ConvexProvider client={convexClient}>

@@ -1,16 +1,15 @@
 /** @type {import('next').NextConfig} */
+
+const convexImageHost = process.env.NEXT_PUBLIC_CONVEX_URL
+    ? new URL(process.env.NEXT_PUBLIC_CONVEX_URL).hostname
+    : undefined;
+
 const nextConfig = {
     reactStrictMode: true,
-    eslint: {
-        ignoreDuringBuilds: true,
-    },
     images: {
-        remotePatterns: [
-            {
-                protocol: 'https',
-                hostname: 'wonderful-oyster-582.convex.cloud',
-            },
-        ],
+        remotePatterns: convexImageHost
+            ? [{ protocol: 'https', hostname: convexImageHost }]
+            : [],
     },
 };
 
