@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { useAction } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { useAuth } from '@/hooks/use-auth';
 
 interface ValidationResult {
   isAppropriate: boolean;
@@ -29,7 +31,12 @@ interface GeminiError {
   isRetryable: boolean;
 }
 
+const clampConfidence = (value: unknown) =>
+  Math.min(Math.max(typeof value === 'number' ? value : 0.5, 0), 1);
+
 export function useGemini() {
+  const { token } = useAuth();
+
   const [isValidating, setIsValidating] = useState(false);
   const [isFactChecking, setIsFactChecking] = useState(false);
   const [isBiasChecking, setIsBiasChecking] = useState(false);
@@ -37,72 +44,52 @@ export function useGemini() {
   const [lastFactCheck, setLastFactCheck] = useState<FactCheckResult | null>(null);
   const [lastBiasCheck, setLastBiasCheck] = useState<BiasCheckResult | null>(null);
 
+  const runValidateFeedback = useAction(api.functions.ai.validateFeedback);
+  const runFactCheckClaim = useAction(api.functions.ai.factCheckClaim);
+  const runCheckBias = useAction(api.functions.ai.checkBias);
+
   const handleGeminiError = useCallback((error: any): GeminiError => {
     console.error('Gemini API error:', error);
 
-    if (error.status || error.code) {
-      const status = error.status || error.code;
+    const message: string = error?.message ?? '';
 
-      switch (status) {
-        case 400:
-          return {
-            code: 'INVALID_REQUEST',
-            message: 'Request format error - continuing without AI assistance',
-            isRetryable: false
-          };
-        case 403:
-          return {
-            code: 'PERMISSION_DENIED',
-            message: 'API key issue - continuing without AI assistance',
-            isRetryable: false
-          };
-        case 429:
-          return {
-            code: 'RATE_LIMITED',
-            message: 'Rate limit exceeded - please try again later',
-            isRetryable: true
-          };
-        case 500:
-          return {
-            code: 'INTERNAL_ERROR',
-            message: 'Gemini service error - continuing without AI assistance',
-            isRetryable: true
-          };
-        case 503:
-          return {
-            code: 'SERVICE_UNAVAILABLE',
-            message: 'Gemini temporarily unavailable - continuing without AI assistance',
-            isRetryable: true
-          };
-        case 504:
-          return {
-            code: 'TIMEOUT',
-            message: 'Request timeout - try with shorter content',
-            isRetryable: true
-          };
-        default:
-          return {
-            code: 'UNKNOWN_ERROR',
-            message: 'AI service unavailable - continuing without AI assistance',
-            isRetryable: true
-          };
-      }
+    if (/not configured/i.test(message)) {
+      return {
+        code: 'NOT_CONFIGURED',
+        message: 'AI assistance is not configured - continuing without it',
+        isRetryable: false,
+      };
+    }
+
+    if (/authentication required/i.test(message)) {
+      return {
+        code: 'UNAUTHENTICATED',
+        message: 'Sign in again to use AI assistance',
+        isRetryable: false,
+      };
+    }
+
+    if (/rate limit|quota|429/i.test(message)) {
+      return {
+        code: 'RATE_LIMITED',
+        message: 'Rate limit exceeded - please try again later',
+        isRetryable: true,
+      };
+    }
+
+    if (/did not contain JSON|Empty response|JSON/i.test(message)) {
+      return {
+        code: 'INVALID_RESPONSE',
+        message: 'Unexpected AI response - continuing without AI assistance',
+        isRetryable: true,
+      };
     }
 
     return {
-      code: 'NETWORK_ERROR',
-      message: 'Network error - continuing without AI assistance',
-      isRetryable: true
+      code: 'UNKNOWN_ERROR',
+      message: 'AI service unavailable - continuing without AI assistance',
+      isRetryable: true,
     };
-  }, []);
-
-  const getGeminiModel = useCallback(() => {
-    if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
-      throw new Error('Gemini API key not configured');
-    }
-
-    const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY);
-    return genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
   }, []);
 
   const validateFeedback = useCallback(async (
@@ -110,73 +97,31 @@ export function useGemini() {
     speakerComments: Record<string, string> = {},
     judgeNotes: string = ''
   ): Promise<ValidationResult> => {
+    const allComments = Object.values(speakerComments).join('\n');
+    const combinedFeedback = `${feedback}\n${allComments}\n${judgeNotes}`.trim();
+
+    if (!combinedFeedback) {
+      return { isAppropriate: true, confidence: 1 };
+    }
+
     setIsValidating(true);
 
     try {
-      const model = getGeminiModel();
-      const allComments = Object.values(speakerComments).join('\n');
-      const combinedFeedback = `${feedback}\n${allComments}\n${judgeNotes}`.trim();
-
-      if (!combinedFeedback) {
-        return { isAppropriate: true, confidence: 1 };
+      if (!token) {
+        throw new Error('Authentication required');
       }
 
-      const prompt = `
-You are a professional content moderator for academic debate tournaments. Your task is to analyze judge feedback and comments to ensure they are:
-
-1. **Professional and Constructive**: Language should be respectful, educational, and focused on improvement
-2. **Appropriate for Students**: Content suitable for high school/university students and educational environment
-3. **Non-Discriminatory**: Free from bias based on race, gender, religion, nationality, or personal characteristics
-4. **Factual and Fair**: Focused on debate performance rather than personal attacks
-5. **Encouraging**: Even critical feedback should be constructive and motivational
-
-**ANALYZE THE FOLLOWING FEEDBACK:**
-"""
-${combinedFeedback}
-"""
-
-**EVALUATION CRITERIA:**
-- ❌ INAPPROPRIATE: Personal attacks, discriminatory language, inappropriate humor, excessive negativity, unprofessional tone, bias based on personal characteristics
-- ✅ APPROPRIATE: Constructive criticism, specific improvement suggestions, professional language, balanced feedback, performance-focused comments
-
-**RESPONSE FORMAT (JSON only):**
-{
-  "isAppropriate": boolean,
-  "confidence": number (0-1),
-  "issues": ["list of specific issues found"],
-  "suggestions": ["specific improvement suggestions for problematic parts"],
-  "reasoning": "brief explanation of decision"
-}
-
-**IMPORTANT:**
-- Be strict but fair - academic standards should be high
-- Consider cultural sensitivity for international tournaments
-- Focus on intent and impact, not just specific words
-- Provide specific, actionable feedback for improvements
-- Only flag content that would genuinely be inappropriate in an educational setting
-
-Respond with valid JSON only:`;
-
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-
-      const jsonMatch = responseText.match(/\{[\s\S]*}/);
-      if (!jsonMatch) {
-        throw new Error('Invalid response format from Gemini');
-      }
-
-      const validation: ValidationResult = JSON.parse(jsonMatch[0]);
+      const validation = await runValidateFeedback({ token, content: combinedFeedback });
 
       const finalResult: ValidationResult = {
         isAppropriate: validation.isAppropriate ?? true,
-        confidence: Math.min(Math.max(validation.confidence ?? 0.5, 0), 1),
+        confidence: clampConfidence(validation.confidence),
         issues: validation.issues ?? [],
         suggestions: validation.suggestions ?? [],
       };
 
       setLastValidation(finalResult);
       return finalResult;
-
     } catch (error: any) {
       const geminiError = handleGeminiError(error);
 
@@ -188,7 +133,7 @@ Respond with valid JSON only:`;
     } finally {
       setIsValidating(false);
     }
-  }, [getGeminiModel, handleGeminiError]);
+  }, [token, runValidateFeedback, handleGeminiError]);
 
   const factCheckClaim = useCallback(async (
     claim: string,
@@ -197,62 +142,22 @@ Respond with valid JSON only:`;
     setIsFactChecking(true);
 
     try {
-      const model = getGeminiModel();
-
-      const prompt = `
-You are a fact-checking assistant for academic debate tournaments. Analyze the following claim for accuracy.
-
-**CLAIM TO CHECK:**
-"""
-${claim}
-"""
-
-${context ? `**CONTEXT:**\n"""${context}"""` : ''}
-
-**INSTRUCTIONS:**
-1. Evaluate the factual accuracy of the claim
-2. Consider that some claims may be opinions or interpretations
-3. Provide sources when possible, but acknowledge when information cannot be verified online
-4. Be honest about limitations - not everything can be fact-checked definitively
-
-**RESPONSE FORMAT (JSON only):**
-{
-  "result": "true" | "false" | "partially_true" | "inconclusive",
-  "confidence": number (0-1),
-  "explanation": "detailed explanation of the assessment",
-  "sources": ["array of source descriptions or URLs if available"],
-  "reasoning": "brief explanation of how you reached this conclusion"
-}
-
-**RESULT DEFINITIONS:**
-- "true": Claim is factually accurate
-- "false": Claim is factually incorrect
-- "partially_true": Claim has some accurate elements but also inaccuracies
-- "inconclusive": Cannot be definitively verified (opinion, insufficient data, etc.)
-
-Respond with valid JSON only:`;
-
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-
-      const jsonMatch = responseText.match(/\{[\s\S]*}/);
-      if (!jsonMatch) {
-        throw new Error('Invalid response format from Gemini');
+      if (!token) {
+        throw new Error('Authentication required');
       }
 
-      const factCheck = JSON.parse(jsonMatch[0]);
+      const factCheck = await runFactCheckClaim({ token, claim, context });
 
       const finalResult: FactCheckResult = {
         isValid: factCheck.result === 'true' || factCheck.result === 'partially_true',
         result: factCheck.result,
         sources: factCheck.sources ?? [],
         explanation: factCheck.explanation,
-        confidence: Math.min(Math.max(factCheck.confidence ?? 0.5, 0), 1),
+        confidence: clampConfidence(factCheck.confidence),
       };
 
       setLastFactCheck(finalResult);
       return finalResult;
-
     } catch (error: any) {
       const geminiError = handleGeminiError(error);
 
@@ -269,7 +174,7 @@ Respond with valid JSON only:`;
     } finally {
       setIsFactChecking(false);
     }
-  }, [getGeminiModel, handleGeminiError]);
+  }, [token, runFactCheckClaim, handleGeminiError]);
 
   const checkBias = useCallback(async (
     content: string,
@@ -278,60 +183,21 @@ Respond with valid JSON only:`;
     setIsBiasChecking(true);
 
     try {
-      const model = getGeminiModel();
-
-      const prompt = `
-You are a bias detection assistant for academic debate tournaments. Analyze the following ${contentType} for potential bias.
-
-**CONTENT TO ANALYZE:**
-"""
-${content}
-"""
-
-**TYPES OF BIAS TO DETECT:**
-1. **Identity Bias**: Based on race, gender, religion, nationality, age, appearance
-2. **Confirmation Bias**: Favoring information that confirms pre-existing beliefs
-3. **Anchoring Bias**: Over-relying on first impressions or initial information
-4. **Linguistic Bias**: Bias based on accent, language proficiency, speaking style
-5. **Cultural Bias**: Assumptions based on cultural background or practices
-
-**RESPONSE FORMAT (JSON only):**
-{
-  "hasBias": boolean,
-  "confidence": number (0-1),
-  "biasTypes": ["array of detected bias types"],
-  "suggestions": ["specific suggestions for more neutral language"],
-  "reasoning": "explanation of detected bias or why content is unbiased"
-}
-
-**GUIDELINES:**
-- Focus on subtle bias that the author may not be aware of
-- Consider academic debate context - focus on argumentation quality
-- Provide constructive suggestions for improvement
-- Be careful not to over-flag normal evaluation language
-
-Respond with valid JSON only:`;
-
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-
-      const jsonMatch = responseText.match(/\{[\s\S]*}/);
-      if (!jsonMatch) {
-        throw new Error('Invalid response format from Gemini');
+      if (!token) {
+        throw new Error('Authentication required');
       }
 
-      const biasCheck = JSON.parse(jsonMatch[0]);
+      const biasCheck = await runCheckBias({ token, content, content_type: contentType });
 
       const finalResult: BiasCheckResult = {
         hasBias: biasCheck.hasBias ?? false,
         biasType: biasCheck.biasTypes ?? [],
         suggestions: biasCheck.suggestions ?? [],
-        confidence: Math.min(Math.max(biasCheck.confidence ?? 0.5, 0), 1),
+        confidence: clampConfidence(biasCheck.confidence),
       };
 
       setLastBiasCheck(finalResult);
       return finalResult;
-
     } catch (error: any) {
       const geminiError = handleGeminiError(error);
 
@@ -347,7 +213,7 @@ Respond with valid JSON only:`;
     } finally {
       setIsBiasChecking(false);
     }
-  }, [getGeminiModel, handleGeminiError]);
+  }, [token, runCheckBias, handleGeminiError]);
 
   return {
 
@@ -367,7 +233,7 @@ Respond with valid JSON only:`;
   };
 }
 
-function performFallbackValidation(
+export function performFallbackValidation(
   feedback: string,
   speakerComments: Record<string, string>,
   judgeNotes: string

@@ -77,8 +77,11 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 | **Auth on `updateRecording`** (+ audit log) | ✅ Done |
 | ~~Fix `view_count` never incrementing~~ | ✅ Not a bug — already correct |
 | Type `report_shares.report_id` | ⬜ Deferred (needs migration) |
-| **Move Gemini server-side; rotate key** | ⬜ |
-| Migrate to `gemini-2.5-flash-lite` | ⬜ |
+| **Move Gemini server-side** (`convex/functions/ai.ts`) | ✅ Done |
+| Migrate to `gemini-2.5-flash-lite` (2.0 was shut down 1 Jun 2026) | ✅ Done |
+| Replace legacy `@google/generative-ai` with `@google/genai` | ✅ Done |
+| **Rotate the exposed Gemini key** | ⬜ **Needs you — treat as compromised** |
+| Set `GEMINI_API_KEY` in Convex env | ⬜ **Needs you** |
 | Audit all 28 files for missing auth | ⬜ |
 | Cross-role access tests | ⬜ Blocked on `00-foundations` |
 | **Upgrade `jspdf` 3.0.1 → 4.2.1 — cleared CRITICAL** | ✅ Done |
