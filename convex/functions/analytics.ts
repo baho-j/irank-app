@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { api } from "../_generated/api";
+import { internal } from "../_generated/api";
 
 export const getSharedReportData = query({
   args: {
@@ -50,38 +50,33 @@ export const getSharedReportData = query({
       const reportSections: Record<string, any> = {};
 
       if (config.sections.includes("overview")) {
-        reportSections.overview = await ctx.runQuery(api.functions.admin.analytics.getDashboardOverview, {
-          token: "shared",
+        reportSections.overview = await ctx.runQuery(internal.functions.admin.analytics.dashboardOverview, {
           date_range: config.date_range,
         });
       }
 
       if (config.sections.includes("tournaments")) {
-        reportSections.tournaments = await ctx.runQuery(api.functions.admin.analytics.getTournamentAnalytics, {
-          token: "shared",
+        reportSections.tournaments = await ctx.runQuery(internal.functions.admin.analytics.tournamentAnalytics, {
           date_range: config.date_range,
           league_id: config.filters?.league_id,
         });
       }
 
       if (config.sections.includes("users")) {
-        reportSections.users = await ctx.runQuery(api.functions.admin.analytics.getUserAnalytics, {
-          token: "shared",
+        reportSections.users = await ctx.runQuery(internal.functions.admin.analytics.userAnalytics, {
           date_range: config.date_range,
         });
       }
 
       if (config.sections.includes("financial")) {
-        reportSections.financial = await ctx.runQuery(api.functions.admin.analytics.getFinancialAnalytics, {
-          token: "shared",
+        reportSections.financial = await ctx.runQuery(internal.functions.admin.analytics.financialAnalytics, {
           date_range: config.date_range,
           currency: config.filters?.currency,
         });
       }
 
       if (config.sections.includes("performance")) {
-        reportSections.performance = await ctx.runQuery(api.functions.admin.analytics.getPerformanceAnalytics, {
-          token: "shared",
+        reportSections.performance = await ctx.runQuery(internal.functions.admin.analytics.performanceAnalytics, {
           date_range: config.date_range,
           tournament_id: config.filters?.tournament_id,
         });

@@ -176,7 +176,7 @@ function calculateFinalScore(scores: Record<string, number>): number {
 }
 
 
-function DebateTimer({ debate, onUpdateDebate, compact = false }: any) {
+function DebateTimer({ debate, token, onUpdateDebate, compact = false }: any) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -293,6 +293,7 @@ function DebateTimer({ debate, onUpdateDebate, compact = false }: any) {
       const { storageId } = await result.json();
 
       await updateDebateRecording({
+        token,
         debate_id: debate._id,
         recording_id: storageId,
         duration: recordingDuration,
@@ -1414,7 +1415,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                   </Badge>
                 )}
               </div>
-              <DebateTimer debate={debate} onTimeUpdate={() => {}} compact={true} />
+              <DebateTimer debate={debate} token={token} onTimeUpdate={() => {}} compact={true} />
             </DrawerTitle>
           </DrawerHeader>
 
@@ -1987,7 +1988,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
 
             <div className="space-y-4">
-              <DebateTimer debate={debate} onTimeUpdate={() => {}} />
+              <DebateTimer debate={debate} token={token} onTimeUpdate={() => {}} />
 
               {userRole === "admin" && debate.judges?.length > 0 && (
                 <Card className="p-4">

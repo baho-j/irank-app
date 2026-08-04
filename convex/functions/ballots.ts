@@ -194,15 +194,45 @@ export const getTournamentBallots = query({
 
 export const updateRecording = mutation({
   args: {
+    token: v.string(),
     debate_id: v.id("debates"),
     recording_id: v.id("_storage"),
     duration: v.number(),
   },
   handler: async (ctx, args) => {
+    const sessionResult = await ctx.runMutation(internal.functions.auth.verifySession, {
+      token: args.token,
+    });
+
+    if (!sessionResult.valid || !sessionResult.user) {
+      throw new Error("Authentication required");
+    }
+
+    const user = sessionResult.user;
+    const debate = await ctx.db.get(args.debate_id);
+
+    if (!debate) {
+      throw new Error("Debate not found");
+    }
+
+    const isAssignedJudge = debate.judges.includes(user.id);
+
+    if (user.role !== "admin" && !isAssignedJudge) {
+      throw new Error("Only an assigned judge or an admin can update this recording");
+    }
+
     await ctx.db.patch(args.debate_id, {
       recording: args.recording_id,
       recording_duration: args.duration,
       updated_at: Date.now(),
+    });
+
+    await ctx.runMutation(internal.functions.audit.createAuditLog, {
+      user_id: user.id,
+      action: "debate_updated",
+      resource_type: "debates",
+      resource_id: args.debate_id,
+      description: `Updated recording for debate in room ${debate.room_name ?? "unknown"}`,
     });
 
     return { success: true };

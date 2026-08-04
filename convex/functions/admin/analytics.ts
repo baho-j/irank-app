@@ -1,39 +1,57 @@
-import { mutation, query } from "../../_generated/server";
+import { internalQuery, mutation, query } from "../../_generated/server";
 import { v } from "convex/values";
-import { api, internal } from "../../_generated/api";
+import { internal } from "../../_generated/api";
 import { Id } from "../../_generated/dataModel";
+
+const dateRangeValidator = v.optional(v.object({
+  start: v.number(),
+  end: v.number(),
+}));
+
+async function requireAdmin(ctx: any, token: string) {
+  const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
+    token,
+  });
+
+  if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
+    throw new Error("Admin access required");
+  }
+
+  return sessionResult.user;
+}
+
+type DashboardOverview = {
+  total_tournaments: number;
+  active_tournaments: number;
+  total_users: number;
+  total_schools: number;
+  total_debates: number;
+  growth_metrics: {
+    tournaments: number;
+    users: number;
+    schools: number;
+  };
+};
 
 export const getDashboardOverview = query({
   args: {
     token: v.string(),
-    date_range: v.optional(v.object({
-      start: v.number(),
-      end: v.number(),
-    })),
+    date_range: dateRangeValidator,
   },
-  handler: async (ctx, args): Promise<{
-    total_tournaments: number;
-    active_tournaments: number;
-    total_users: number;
-    total_schools: number;
-    total_debates: number;
-    growth_metrics: {
-      tournaments: number;
-      users: number;
-      schools: number;
-    };
-  }> => {
+  handler: async (ctx, args): Promise<DashboardOverview> => {
+    await requireAdmin(ctx, args.token);
 
-    if (args.token !== "shared") {
-      const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
-        token: args.token,
-      });
+    return await ctx.runQuery(internal.functions.admin.analytics.dashboardOverview, {
+      date_range: args.date_range,
+    });
+  },
+});
 
-      if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
-        throw new Error("Admin access required");
-      }
-    }
-
+export const dashboardOverview = internalQuery({
+  args: {
+    date_range: dateRangeValidator,
+  },
+  handler: async (ctx, args): Promise<DashboardOverview> => {
     const now = Date.now();
     const dateRange = args.date_range || {
       start: now - (30 * 24 * 60 * 60 * 1000),
@@ -92,53 +110,56 @@ export const getDashboardOverview = query({
   },
 });
 
+type TournamentAnalytics = {
+  tournament_trends: Array<{
+    date: string;
+    total: number;
+    completed: number;
+    in_progress: number;
+    published: number;
+  }>;
+  format_distribution: Array<{
+    format: string;
+    count: number;
+    percentage: number;
+  }>;
+  virtual_vs_physical: {
+    virtual: number;
+    physical: number;
+  };
+  participation_metrics: {
+    schools_participated: number;
+    total_students: number;
+    school_participation_breakdown: Array<{
+      school_name: string;
+      students_count: number;
+      tournaments_participated: number;
+    }>;
+  };
+};
+
 export const getTournamentAnalytics = query({
   args: {
     token: v.string(),
-    date_range: v.optional(v.object({
-      start: v.number(),
-      end: v.number(),
-    })),
+    date_range: dateRangeValidator,
     league_id: v.optional(v.id("leagues")),
   },
-  handler: async (ctx, args): Promise<{
-    tournament_trends: Array<{
-      date: string;
-      total: number;
-      completed: number;
-      in_progress: number;
-      published: number;
-    }>;
-    format_distribution: Array<{
-      format: string;
-      count: number;
-      percentage: number;
-    }>;
-    virtual_vs_physical: {
-      virtual: number;
-      physical: number;
-    };
-    participation_metrics: {
-      schools_participated: number;
-      total_students: number;
-      school_participation_breakdown: Array<{
-        school_name: string;
-        students_count: number;
-        tournaments_participated: number;
-      }>;
-    };
-  }> => {
+  handler: async (ctx, args): Promise<TournamentAnalytics> => {
+    await requireAdmin(ctx, args.token);
 
-    if (args.token !== "shared") {
-      const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
-        token: args.token,
-      });
+    return await ctx.runQuery(internal.functions.admin.analytics.tournamentAnalytics, {
+      date_range: args.date_range,
+      league_id: args.league_id,
+    });
+  },
+});
 
-      if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
-        throw new Error("Admin access required");
-      }
-    }
-
+export const tournamentAnalytics = internalQuery({
+  args: {
+    date_range: dateRangeValidator,
+    league_id: v.optional(v.id("leagues")),
+  },
+  handler: async (ctx, args): Promise<TournamentAnalytics> => {
     const now = Date.now();
     const dateRange = args.date_range || {
       start: now - (90 * 24 * 60 * 60 * 1000),
@@ -243,51 +264,53 @@ export const getTournamentAnalytics = query({
   },
 });
 
+type UserAnalytics = {
+  user_growth: Array<{
+    date: string;
+    students: number;
+    volunteers: number;
+    school_admins: number;
+    admins: number;
+    total: number;
+  }>;
+  role_distribution: Array<{
+    role: string;
+    count: number;
+    percentage: number;
+    verified_percentage: number;
+  }>;
+  engagement_metrics: {
+    active_users: number;
+    login_frequency: Array<{
+      period: string;
+      logins: number;
+    }>;
+    tournament_participation: Array<{
+      role: string;
+      participation_rate: number;
+    }>;
+  };
+};
+
 export const getUserAnalytics = query({
   args: {
     token: v.string(),
-    date_range: v.optional(v.object({
-      start: v.number(),
-      end: v.number(),
-    })),
+    date_range: dateRangeValidator,
   },
-  handler: async (ctx, args): Promise<{
-    user_growth: Array<{
-      date: string;
-      students: number;
-      volunteers: number;
-      school_admins: number;
-      admins: number;
-      total: number;
-    }>;
-    role_distribution: Array<{
-      role: string;
-      count: number;
-      percentage: number;
-      verified_percentage: number;
-    }>;
-    engagement_metrics: {
-      active_users: number;
-      login_frequency: Array<{
-        period: string;
-        logins: number;
-      }>;
-      tournament_participation: Array<{
-        role: string;
-        participation_rate: number;
-      }>;
-    };
-  }> => {
-    if (args.token !== "shared") {
-      const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
-        token: args.token,
-      });
+  handler: async (ctx, args): Promise<UserAnalytics> => {
+    await requireAdmin(ctx, args.token);
 
-      if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
-        throw new Error("Admin access required");
-      }
-    }
+    return await ctx.runQuery(internal.functions.admin.analytics.userAnalytics, {
+      date_range: args.date_range,
+    });
+  },
+});
 
+export const userAnalytics = internalQuery({
+  args: {
+    date_range: dateRangeValidator,
+  },
+  handler: async (ctx, args): Promise<UserAnalytics> => {
     const now = Date.now();
     const dateRange = args.date_range || {
       start: now - (90 * 24 * 60 * 60 * 1000),
@@ -393,68 +416,71 @@ export const getUserAnalytics = query({
   },
 });
 
+type FinancialAnalytics = {
+  revenue_trends: Array<{
+    date: string;
+    revenue: number;
+    transactions: number;
+  }>;
+  payment_distribution: Array<{
+    method: string;
+    count: number;
+    amount: number;
+    percentage: number;
+  }>;
+  tournament_revenue: Array<{
+    tournament_name: string;
+    revenue: number;
+    teams_count: number;
+    fee_per_team: number;
+  }>;
+  outstanding_payments: {
+    total_amount: number;
+    count: number;
+    by_tournament: Array<{
+      tournament_name: string;
+      amount: number;
+      count: number;
+    }>;
+  };
+  waiver_usage: {
+    total_waivers: number;
+    total_amount_waived: number;
+    by_tournament: Array<{
+      tournament_name: string;
+      waivers_used: number;
+      amount_waived: number;
+    }>;
+  };
+  regional_revenue: Array<{
+    country: string;
+    revenue: number;
+    tournaments: number;
+  }>;
+};
+
 export const getFinancialAnalytics = query({
   args: {
     token: v.string(),
-    date_range: v.optional(v.object({
-      start: v.number(),
-      end: v.number(),
-    })),
+    date_range: dateRangeValidator,
     currency: v.optional(v.union(v.literal("RWF"), v.literal("USD"))),
   },
-  handler: async (ctx, args): Promise<{
-    revenue_trends: Array<{
-      date: string;
-      revenue: number;
-      transactions: number;
-    }>;
-    payment_distribution: Array<{
-      method: string;
-      count: number;
-      amount: number;
-      percentage: number;
-    }>;
-    tournament_revenue: Array<{
-      tournament_name: string;
-      revenue: number;
-      teams_count: number;
-      fee_per_team: number;
-    }>;
-    outstanding_payments: {
-      total_amount: number;
-      count: number;
-      by_tournament: Array<{
-        tournament_name: string;
-        amount: number;
-        count: number;
-      }>;
-    };
-    waiver_usage: {
-      total_waivers: number;
-      total_amount_waived: number;
-      by_tournament: Array<{
-        tournament_name: string;
-        waivers_used: number;
-        amount_waived: number;
-      }>;
-    };
-    regional_revenue: Array<{
-      country: string;
-      revenue: number;
-      tournaments: number;
-    }>;
-  }> => {
+  handler: async (ctx, args): Promise<FinancialAnalytics> => {
+    await requireAdmin(ctx, args.token);
 
-    if (args.token !== "shared") {
-      const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
-        token: args.token,
-      });
+    return await ctx.runQuery(internal.functions.admin.analytics.financialAnalytics, {
+      date_range: args.date_range,
+      currency: args.currency,
+    });
+  },
+});
 
-      if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
-        throw new Error("Admin access required");
-      }
-    }
-
+export const financialAnalytics = internalQuery({
+  args: {
+    date_range: dateRangeValidator,
+    currency: v.optional(v.union(v.literal("RWF"), v.literal("USD"))),
+  },
+  handler: async (ctx, args): Promise<FinancialAnalytics> => {
     const now = Date.now();
     const dateRange = args.date_range || {
       start: now - (90 * 24 * 60 * 60 * 1000),
@@ -624,85 +650,89 @@ export const getFinancialAnalytics = query({
   },
 });
 
+type PerformanceAnalytics = {
+  tournament_rankings: Array<{
+    tournament_name: string;
+    format: string;
+    date: number;
+    team_rankings: Array<{
+      rank: number;
+      school_name: string;
+      team_name: string;
+      total_points: number;
+      wins: number;
+      losses: number;
+    }>;
+    speaker_rankings: Array<{
+      rank: number;
+      speaker_name: string;
+      school_name: string;
+      total_points: number;
+      average_score: number;
+    }>;
+  }>;
+  cross_tournament_rankings: {
+    top_schools: Array<{
+      school_name: string;
+      tournaments_participated: number;
+      total_points: number;
+      average_rank: number;
+      consistency_score: number;
+    }>;
+    top_speakers: Array<{
+      speaker_name: string;
+      school_name: string;
+      tournaments_participated: number;
+      total_points: number;
+      average_rank: number;
+      best_rank: number;
+    }>;
+    top_teams: Array<{
+      team_composition: string;
+      school_name: string;
+      tournaments_together: number;
+      combined_points: number;
+      win_rate: number;
+    }>;
+  };
+  judge_performance: {
+    consistency_scores: Array<{
+      judge_name: string;
+      consistency: number;
+      debates_judged: number;
+      tournaments_participated: number;
+    }>;
+    feedback_quality: Array<{
+      judge_name: string;
+      avg_feedback_score: number;
+      total_feedback_received: number;
+      response_time_avg: number;
+    }>;
+  };
+};
+
 export const getPerformanceAnalytics = query({
   args: {
     token: v.string(),
-    date_range: v.optional(v.object({
-      start: v.number(),
-      end: v.number(),
-    })),
+    date_range: dateRangeValidator,
     tournament_id: v.optional(v.id("tournaments")),
   },
-  handler: async (ctx, args): Promise<{
-    tournament_rankings: Array<{
-      tournament_name: string;
-      format: string;
-      date: number;
-      team_rankings: Array<{
-        rank: number;
-        school_name: string;
-        team_name: string;
-        total_points: number;
-        wins: number;
-        losses: number;
-      }>;
-      speaker_rankings: Array<{
-        rank: number;
-        speaker_name: string;
-        school_name: string;
-        total_points: number;
-        average_score: number;
-      }>;
-    }>;
-    cross_tournament_rankings: {
-      top_schools: Array<{
-        school_name: string;
-        tournaments_participated: number;
-        total_points: number;
-        average_rank: number;
-        consistency_score: number;
-      }>;
-      top_speakers: Array<{
-        speaker_name: string;
-        school_name: string;
-        tournaments_participated: number;
-        total_points: number;
-        average_rank: number;
-        best_rank: number;
-      }>;
-      top_teams: Array<{
-        team_composition: string;
-        school_name: string;
-        tournaments_together: number;
-        combined_points: number;
-        win_rate: number;
-      }>;
-    };
-    judge_performance: {
-      consistency_scores: Array<{
-        judge_name: string;
-        consistency: number;
-        debates_judged: number;
-        tournaments_participated: number;
-      }>;
-      feedback_quality: Array<{
-        judge_name: string;
-        avg_feedback_score: number;
-        total_feedback_received: number;
-        response_time_avg: number;
-      }>;
-    };
-  }> => {
-    if (args.token !== "shared") {
-      const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
-        token: args.token,
-      });
+  handler: async (ctx, args): Promise<PerformanceAnalytics> => {
+    await requireAdmin(ctx, args.token);
 
-      if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
-        throw new Error("Admin access required");
-      }
-    }
+    return await ctx.runQuery(internal.functions.admin.analytics.performanceAnalytics, {
+      date_range: args.date_range,
+      tournament_id: args.tournament_id,
+    });
+  },
+});
 
+export const performanceAnalytics = internalQuery({
+  args: {
+    date_range: dateRangeValidator,
+    tournament_id: v.optional(v.id("tournaments")),
+  },
+  handler: async (ctx, args): Promise<PerformanceAnalytics> => {
     const now = Date.now();
     const dateRange = args.date_range || {
       start: now - (365 * 24 * 60 * 60 * 1000),
@@ -1194,50 +1224,38 @@ export const exportAnalyticsData = query({
     })),
   },
   handler: async (ctx, args): Promise<Record<string, any>> => {
-
-    const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
-      token: args.token,
-    });
-
-    if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
-      throw new Error("Admin access required");
-    }
+    await requireAdmin(ctx, args.token);
 
     const exportData: Record<string, any> = {};
 
     if (args.sections.includes("overview")) {
-      exportData.overview = await ctx.runQuery(api.functions.admin.analytics.getDashboardOverview, {
-        token: args.token,
+      exportData.overview = await ctx.runQuery(internal.functions.admin.analytics.dashboardOverview, {
         date_range: args.date_range,
       });
     }
 
     if (args.sections.includes("tournaments")) {
-      exportData.tournaments = await ctx.runQuery(api.functions.admin.analytics.getTournamentAnalytics, {
-        token: args.token,
+      exportData.tournaments = await ctx.runQuery(internal.functions.admin.analytics.tournamentAnalytics, {
         date_range: args.date_range,
         league_id: args.filters?.league_id,
       });
     }
 
     if (args.sections.includes("users")) {
-      exportData.users = await ctx.runQuery(api.functions.admin.analytics.getUserAnalytics, {
-        token: args.token,
+      exportData.users = await ctx.runQuery(internal.functions.admin.analytics.userAnalytics, {
         date_range: args.date_range,
       });
     }
 
     if (args.sections.includes("financial")) {
-      exportData.financial = await ctx.runQuery(api.functions.admin.analytics.getFinancialAnalytics, {
-        token: args.token,
+      exportData.financial = await ctx.runQuery(internal.functions.admin.analytics.financialAnalytics, {
         date_range: args.date_range,
         currency: args.filters?.currency,
       });
     }
 
     if (args.sections.includes("performance")) {
-      exportData.performance = await ctx.runQuery(api.functions.admin.analytics.getPerformanceAnalytics, {
-        token: args.token,
+      exportData.performance = await ctx.runQuery(internal.functions.admin.analytics.performanceAnalytics, {
         date_range: args.date_range,
         tournament_id: args.filters?.tournament_id,
       });
