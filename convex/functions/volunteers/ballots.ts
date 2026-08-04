@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { Doc, Id } from "../../_generated/dataModel";
 import { paginationOptsValidator } from "convex/server";
+import { resolvePanel } from "../../lib/ballot_results";
+import { scoreBallot, speakerScoreValidator } from "../../lib/ballot_validation";
 
 export const getJudgeAssignedDebates = query({
   args: {
@@ -169,11 +171,12 @@ const checkAndUpdateRoundCompletion = async (ctx: any, roundId: Id<"rounds">) =>
   }
 };
 
-const updateDebateResults = async (ctx: any, debateId: Id<"debates">) => {
+export const updateDebateResults = async (ctx: any, debateId: Id<"debates">) => {
   const submissions = await ctx.db
     .query("judging_scores")
-    .withIndex("by_debate_id", (q: { eq: (arg0: string, arg1: Id<"debates">) => any; }) => q.eq("debate_id", debateId))
-    .filter((q: any) => q.eq(q.field("feedback_submitted"), true))
+    .withIndex("by_debate_id_submission_state", (q: any) =>
+      q.eq("debate_id", debateId).eq("submission_state", "submitted")
+    )
     .collect();
 
   if (submissions.length === 0) return;
@@ -181,48 +184,26 @@ const updateDebateResults = async (ctx: any, debateId: Id<"debates">) => {
   const debate = await ctx.db.get(debateId);
   if (!debate) return;
 
-  const propVotes = submissions.filter((s: { winning_position: string; }) => s.winning_position === "proposition").length;
-  const oppVotes = submissions.filter((s: { winning_position: string; }) => s.winning_position === "opposition").length;
-
-  let winningTeamId: Id<"teams"> | undefined;
-  let winningPosition: "proposition" | "opposition" | undefined;
-
-  if (propVotes > oppVotes) {
-    winningTeamId = debate.proposition_team_id;
-    winningPosition = "proposition";
-  } else if (oppVotes > propVotes) {
-    winningTeamId = debate.opposition_team_id;
-    winningPosition = "opposition";
-  }
-
-  const teamPoints = new Map<Id<"teams">, number>();
-  submissions.forEach((submission: { speaker_scores: any[]; }) => {
-    submission.speaker_scores.forEach(speakerScore => {
-      const currentPoints = teamPoints.get(speakerScore.team_id) || 0;
-      teamPoints.set(speakerScore.team_id, currentPoints + speakerScore.score);
-    });
-  });
-
-  const avgTeamPoints = new Map<Id<"teams">, number>();
-  teamPoints.forEach((totalPoints, teamId) => {
-    avgTeamPoints.set(teamId, totalPoints / submissions.length);
-  });
+  const outcome = resolvePanel(submissions, debate);
 
   await ctx.db.patch(debateId, {
-    winning_team_id: winningTeamId,
-    winning_team_position: winningPosition,
-    proposition_votes: propVotes,
-    opposition_votes: oppVotes,
+    winning_team_id: outcome.winning_team_id,
+    winning_team_position: outcome.winning_position,
+    proposition_votes: outcome.proposition_votes,
+    opposition_votes: outcome.opposition_votes,
     proposition_team_points: debate.proposition_team_id
-      ? avgTeamPoints.get(debate.proposition_team_id) || 0
+      ? outcome.team_points.get(debate.proposition_team_id) ?? 0
       : undefined,
     opposition_team_points: debate.opposition_team_id
-      ? avgTeamPoints.get(debate.opposition_team_id) || 0
+      ? outcome.team_points.get(debate.opposition_team_id) ?? 0
       : undefined,
-    status: "completed",
+    status: outcome.decided ? "completed" : debate.status,
     updated_at: Date.now(),
   });
-  await checkAndUpdateRoundCompletion(ctx, debate.round_id);
+
+  if (outcome.decided) {
+    await checkAndUpdateRoundCompletion(ctx, debate.round_id);
+  }
 };
 
 export const submitBallot = mutation({
@@ -231,19 +212,8 @@ export const submitBallot = mutation({
     debate_id: v.id("debates"),
     winning_team_id: v.id("teams"),
     winning_position: v.union(v.literal("proposition"), v.literal("opposition")),
-    speaker_scores: v.array(v.object({
-      speaker_id: v.id("users"),
-      team_id: v.id("teams"),
-      position: v.string(),
-      score: v.number(),
-      role_fulfillment: v.number(),
-      argumentation_clash: v.number(),
-      content_development: v.number(),
-      style_strategy_delivery: v.number(),
-      comments: v.optional(v.string()),
-      bias_detected: v.optional(v.boolean()),
-      bias_explanation: v.optional(v.string()),
-    })),
+    speaker_scores: v.array(speakerScoreValidator),
+    rfd: v.optional(v.string()),
     notes: v.optional(v.string()),
     is_final_submission: v.boolean(),
     fact_checks: v.optional(v.array(v.object({
@@ -300,39 +270,28 @@ export const submitBallot = mutation({
       )
       .first();
 
-    if (existingSubmission?.feedback_submitted) {
-      throw new Error("Ballot already submitted and cannot be edited");
+    if (existingSubmission?.submission_state === "submitted") {
+      throw new Error(
+        "This ballot has been submitted and is locked. Ask a coordinator to make any correction."
+      );
     }
 
-    const validateScore = (score: number, field: string): void => {
-      if (score < 0 || score > 25) {
-        throw new Error(`${field} must be between 0 and 25`);
-      }
-    };
+    const tournament = await ctx.db.get(debate.tournament_id);
 
-    const processedSpeakerScores = args.speaker_scores.map(speaker => {
-      validateScore(speaker.role_fulfillment, "role_fulfillment");
-      validateScore(speaker.argumentation_clash, "argumentation_clash");
-      validateScore(speaker.content_development, "content_development");
-      validateScore(speaker.style_strategy_delivery, "style_strategy_delivery");
+    if (tournament && tournament.format !== "WorldSchools") {
+      throw new Error(
+        `Ballots are only available for World Schools tournaments. ${tournament.format} support is coming soon.`
+      );
+    }
 
-      const rubricScore: number = speaker.role_fulfillment + speaker.argumentation_clash +
-        speaker.content_development + speaker.style_strategy_delivery;
-
-      const attendanceBonus: number = 5;
-      const totalRaw: number = rubricScore + attendanceBonus;
-
-      let finalScore: number = (totalRaw / 105) * 30;
-
-      if (finalScore < 16.3) {
-        finalScore = 16.3;
-      }
-
-      return {
-        ...speaker,
-        score: Math.round(finalScore * 10) / 10,
-      };
+    const processedSpeakerScores = scoreBallot({
+      speaker_scores: args.speaker_scores,
+      winning_team_id: args.winning_team_id,
+      rfd: args.rfd,
+      is_final_submission: args.is_final_submission,
     });
+
+    const now = Date.now();
 
     const ballotData = {
       debate_id: args.debate_id,
@@ -340,10 +299,13 @@ export const submitBallot = mutation({
       winning_team_id: args.winning_team_id,
       winning_position: args.winning_position,
       speaker_scores: processedSpeakerScores,
+      rfd: args.rfd,
       notes: args.notes,
-      submitted_at: Date.now(),
-      feedback_submitted: args.is_final_submission,
-      created_at: Date.now(),
+      submission_state: (args.is_final_submission
+        ? "submitted"
+        : "in_progress") as "submitted" | "in_progress",
+      submitted_at: args.is_final_submission ? now : undefined,
+      created_at: now,
     };
 
     let ballotId: Id<"judging_scores">;

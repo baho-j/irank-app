@@ -829,8 +829,8 @@ export const performanceAnalytics = internalQuery({
           if (score.speaker_scores) {
             score.speaker_scores.forEach(speakerScore => {
               const current = speakerStats.get(speakerScore.speaker_id) || { totalPoints: 0, totalScores: 0, scoreCount: 0 };
-              current.totalPoints += speakerScore.score;
-              current.totalScores += speakerScore.score;
+              current.totalPoints += speakerScore.total;
+              current.totalScores += speakerScore.total;
               current.scoreCount++;
               speakerStats.set(speakerScore.speaker_id, current);
             });
@@ -1007,7 +1007,7 @@ export const performanceAnalytics = internalQuery({
       };
 
       if (score.speaker_scores) {
-        const avgScore = score.speaker_scores.reduce((sum, s) => sum + s.score, 0) / score.speaker_scores.length;
+        const avgScore = score.speaker_scores.reduce((sum, s) => sum + s.total, 0) / score.speaker_scores.length;
         current.scores.push(avgScore);
       }
 

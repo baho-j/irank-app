@@ -263,7 +263,7 @@ const computeTeamRankings = async (
     for (const score of debateScores) {
       for (const speakerScore of score.speaker_scores) {
         const currentPoints = teamPointsFromJudges.get(speakerScore.team_id) || 0;
-        teamPointsFromJudges.set(speakerScore.team_id, currentPoints + speakerScore.score);
+        teamPointsFromJudges.set(speakerScore.team_id, currentPoints + speakerScore.total);
       }
     }
 
@@ -637,7 +637,7 @@ const computeStudentCrossTournamentPerformance = async (
     for (const score of tournamentScores) {
       for (const speakerScore of score.speaker_scores) {
         if (speakerScore.speaker_id === speakerId) {
-          speakerTournamentPoints += speakerScore.score;
+          speakerTournamentPoints += speakerScore.total;
         }
       }
     }
@@ -650,7 +650,7 @@ const computeStudentCrossTournamentPerformance = async (
       for (const score of tournamentScores) {
         for (const speakerScore of score.speaker_scores) {
           const current = allSpeakerStats.get(speakerScore.speaker_id) || 0;
-          allSpeakerStats.set(speakerScore.speaker_id, current + speakerScore.score);
+          allSpeakerStats.set(speakerScore.speaker_id, current + speakerScore.total);
         }
       }
 
@@ -738,9 +738,9 @@ const computeStudentRankings = async (
       }
 
       const speakerStat = speakerStats.get(speakerScore.speaker_id)!;
-      speakerStat.total_points += speakerScore.score;
-      speakerStat.scores.push(speakerScore.score);
-      speakerStat.highest_score = Math.max(speakerStat.highest_score, speakerScore.score);
+      speakerStat.total_points += speakerScore.total;
+      speakerStat.scores.push(speakerScore.total);
+      speakerStat.highest_score = Math.max(speakerStat.highest_score, speakerScore.total);
       speakerStat.debates_count++;
     }
   }

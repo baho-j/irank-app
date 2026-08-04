@@ -210,10 +210,10 @@ const calculateStudentRankings = async (
       const studentSpeakerScores = score.speaker_scores.filter((ss: { speaker_id: any; }) => ss.speaker_id === studentUser._id);
 
       for (const speakerScore of studentSpeakerScores) {
-        totalSpeakerPoints += speakerScore.score;
+        totalSpeakerPoints += speakerScore.total;
         scoresCount++;
-        highestIndividualScore = Math.max(highestIndividualScore, speakerScore.score);
-        individualScores.push(speakerScore.score);
+        highestIndividualScore = Math.max(highestIndividualScore, speakerScore.total);
+        individualScores.push(speakerScore.total);
       }
     }
 
@@ -346,7 +346,7 @@ export const getStudentPerformanceTrend = query({
       for (const score of tournamentScores) {
         const studentSpeakerScores = score.speaker_scores.filter(ss => ss.speaker_id === student.id);
         for (const speakerScore of studentSpeakerScores) {
-          studentTotalPoints += speakerScore.score;
+          studentTotalPoints += speakerScore.total;
           studentScoreCount++;
         }
       }
@@ -360,7 +360,7 @@ export const getStudentPerformanceTrend = query({
 
       for (const score of tournamentScores) {
         for (const speakerScore of score.speaker_scores) {
-          allPointsInTournament += speakerScore.score;
+          allPointsInTournament += speakerScore.total;
           allScoreCountInTournament++;
         }
       }
@@ -425,7 +425,7 @@ export const getStudentLeaderboard = query({
         const studentSpeakerScores = score.speaker_scores.filter(ss => ss.speaker_id === student._id);
 
         for (const speakerScore of studentSpeakerScores) {
-          totalPoints += speakerScore.score;
+          totalPoints += speakerScore.total;
           scoresCount++;
         }
       }

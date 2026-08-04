@@ -120,8 +120,12 @@ export const getVolunteerJudgingAnalytics = query({
       .withIndex("by_judge_id", (q) => q.eq("judge_id", user.id))
       .collect();
 
-    const relevantJudgingScores = judgingScores.filter(score =>
-      score.submitted_at >= dateRange.start && score.submitted_at <= dateRange.end
+    const relevantJudgingScores = judgingScores.filter(
+      (score): score is typeof score & { submitted_at: number } =>
+        score.submission_state === "submitted" &&
+        score.submitted_at !== undefined &&
+        score.submitted_at >= dateRange.start &&
+        score.submitted_at <= dateRange.end
     );
 
     const judgeFeedback = await ctx.db.query("judge_feedback").collect();
@@ -191,7 +195,7 @@ export const getVolunteerJudgingAnalytics = query({
     const judgingScoreVariances: number[] = [];
     relevantJudgingScores.forEach(score => {
       if (score.speaker_scores && score.speaker_scores.length > 1) {
-        const scores = score.speaker_scores.map(s => s.score);
+        const scores = score.speaker_scores.map(s => s.total);
         const mean = scores.reduce((sum, s) => sum + s, 0) / scores.length;
         const variance = scores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / scores.length;
         judgingScoreVariances.push(Math.sqrt(variance));
