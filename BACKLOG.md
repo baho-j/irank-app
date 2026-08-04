@@ -107,25 +107,34 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 
 ### 02 — Ballot · `specs/02-ballot.md`
 
+**Backend complete and tested. UI conversion is the remaining work.**
+
 | Item | Status |
 |---|---|
-| `lib/scoring/wsdc.ts` — single source of truth | ⬜ |
-| Remove the 4 duplicated formulas | ⬜ |
-| Schema rewrite: Style/Content/Strategy, speech_type | ⬜ |
-| Required structured RFD | ⬜ |
-| `submission_state` (not_started/in_progress/submitted) | ⬜ |
-| Real `flagged` field; remove `[FLAG:]` strings | ⬜ |
-| `ballot_edits[]` audit with previous values | ⬜ |
-| Historical ballot migration/archive | ⬜ |
-| Panel reconciliation — quorum, chair tiebreak, split flagging | ⬜ |
-| Low-point-win and draw blocking | ⬜ |
-| Half-mark validation | ⬜ |
-| POI ±2 modifier | ⬜ |
-| Reply speech halving | ⬜ |
-| Format gating — "Coming soon" badges | ⬜ |
-| Flowing notes with continuous auto-save | ⬜ |
+| `lib/scoring/wsdc.ts` — single source of truth (60 tests) | ✅ Done |
+| Remove the 4 duplicated formulas | ✅ Done |
+| Schema rewrite: Style/Content/Strategy, speech_type | ✅ Done |
+| Required structured RFD (min 40 chars) | ✅ Done |
+| `submission_state` (not_started/in_progress/submitted) | ✅ Done |
+| Real `flagged` field; remove `[FLAG:]` strings | ✅ Done |
+| `ballot_edits[]` audit with previous values | ✅ Done |
+| Historical ballots — replaced outright (no prod data) | ✅ Done |
+| Panel reconciliation — quorum, chair tiebreak, splits (10 tests) | ✅ Done |
+| Low-point-win and draw blocking | ✅ Done |
+| Half-mark validation | ✅ Done |
+| POI ±2 modifier, clamped to band | ✅ Done |
+| Reply speech halving (30–40) | ✅ Done |
+| Format gating — mutation rejects non-WorldSchools | ✅ Done |
+| Deduplicate `updateDebateResults` / round completion | ✅ Done |
+| **Convert `tournament-ballot.tsx` to the new schema** | 🔵 **In progress — see below** |
+| Format "Coming soon" badges in the UI | ⬜ |
+| Flowing notes with continuous auto-save | ⬜ Blocked on `03-offline` |
 | Timer wired to `speaking_times`, persisted | ⬜ |
 | Decompose `tournament-ballot.tsx` (3,964 lines) | ⬜ |
+
+**UI conversion state.** `SCORING_CATEGORIES` is updated to Style/Content/Strategy, but the component still reads and writes the old fields in ~30 places (`feedback_submitted`, the four old category keys, `is_final_submission`). One typecheck error is currently outstanding: `updateBallot` now requires a `reason`.
+
+The component is typed with `any` throughout, so the compiler catches almost none of this — the conversion has to be done by reading the file, not by chasing type errors. That is the same reason it needs decomposing, so both should happen in one pass.
 
 ### 03 — Offline · `specs/03-offline.md`
 
