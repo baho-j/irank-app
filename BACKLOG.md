@@ -126,15 +126,19 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 | Reply speech halving (30–40) | ✅ Done |
 | Format gating — mutation rejects non-WorldSchools | ✅ Done |
 | Deduplicate `updateDebateResults` / round completion | ✅ Done |
-| **Convert `tournament-ballot.tsx` to the new schema** | 🔵 **In progress — see below** |
-| Format "Coming soon" badges in the UI | ⬜ |
+| **Convert `tournament-ballot.tsx` to the new schema** | ✅ Done |
+| RFD field in the UI | ✅ Done |
+| Client-side submission guard mirroring server rules | ✅ Done |
+| Half-mark score entry with per-criterion ranges | ✅ Done |
+| Extract `components/tournaments/ballot/` (hook + 10 tests) | ✅ Done |
+| Format "Coming soon" badges in the UI | ⬜ Mutation rejects already; badge outstanding |
 | Flowing notes with continuous auto-save | ⬜ Blocked on `03-offline` |
 | Timer wired to `speaking_times`, persisted | ⬜ |
-| Decompose `tournament-ballot.tsx` (3,964 lines) | ⬜ |
+| Finish decomposing `tournament-ballot.tsx` | ⬜ Seam established; remaining sections not yet moved |
 
-**UI conversion state.** `SCORING_CATEGORIES` is updated to Style/Content/Strategy, but the component still reads and writes the old fields in ~30 places (`feedback_submitted`, the four old category keys, `is_final_submission`). One typecheck error is currently outstanding: `updateBallot` now requires a `reason`.
+**Old schema is fully gone** — no `role_fulfillment`, `argumentation_clash`, `content_development`, `style_strategy_delivery`, `feedback_submitted`, or `attendanceBonus` anywhere in source.
 
-The component is typed with `any` throughout, so the compiler catches almost none of this — the conversion has to be done by reading the file, not by chasing type errors. That is the same reason it needs decomposing, so both should happen in one pass.
+Two bugs found during conversion, both fixed: `canEdit` used `!x === "submitted"` (negates before comparing, making every ballot permanently read-only), and round completion still filtered on the deleted `feedback_submitted` field, so no round would ever have completed.
 
 ### 03 — Offline · `specs/03-offline.md`
 
