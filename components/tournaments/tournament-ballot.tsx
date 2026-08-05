@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +76,7 @@ import type { SpeakerPosition } from "@/components/tournaments/ballot/types";
 import { useAutosave } from "@/components/tournaments/ballot/use-autosave";
 import { SaveIndicator } from "@/components/tournaments/ballot/save-indicator";
 import { useSpeechTimer } from "@/components/tournaments/ballot/use-speech-timer";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/offline/drafts";
 import { formatClock } from "@/lib/scoring/speech-timing";
 import { cn } from "@/lib/utils";
 import { useOffline } from "@/hooks/use-offline";
@@ -1337,10 +1338,37 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   const autosave = useAutosave({
     value: draftPayload,
     enabled: canEdit && Object.keys(scores).length > 0,
-    onSave: async () => {
+    onSave: async (payload) => {
+      if (userId) {
+        await saveDraft(debate._id, userId, payload as Record<string, unknown>);
+      }
+
       await handleSubmit(false, { silent: true });
     },
   });
+
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredRef.current || !userId || ballot) return;
+
+    restoredRef.current = true;
+
+    void loadDraft(debate._id, userId).then((draft) => {
+      if (!draft) return;
+
+      const restored = draft as typeof draftPayload;
+
+      if (restored.scores) setScores(restored.scores);
+      if (restored.speakerComments) setSpeakerComments(restored.speakerComments);
+      if (restored.speakerPositions) setSpeakerPositions(restored.speakerPositions);
+      if (restored.teamWinner) setTeamWinner(restored.teamWinner);
+      if (restored.rfd) setRfd(restored.rfd);
+      if (restored.notes) setNotes(restored.notes);
+
+      toast.info("Restored your in-progress ballot");
+    });
+  }, [debate._id, userId, ballot]);
 
   const speechTypeFor = (speakerId: string) =>
     (speakerPositions[speakerId] ?? "first") === "reply"
@@ -1503,6 +1531,10 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
           fact_checks: factChecks.length > 0 ? factChecks : undefined,
           argument_flow: argumentFlow.length > 0 ? argumentFlow : undefined,
         });
+      }
+
+      if (isFinal && userId) {
+        await clearDraft(debate._id, userId);
       }
 
       if (!options.silent) {

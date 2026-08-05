@@ -29,6 +29,7 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["lib/**/*.test.ts", "hooks/**/*.test.ts"],
+          exclude: ["lib/offline/**"],
           environment: "node",
         },
       },
@@ -36,7 +37,11 @@ export default defineConfig({
         extends: true,
         test: {
           name: "components",
-          include: ["components/**/*.test.tsx", "app/**/*.test.tsx"],
+          include: [
+            "components/**/*.test.tsx",
+            "app/**/*.test.tsx",
+            "lib/offline/**/*.test.ts",
+          ],
           environment: "jsdom",
           setupFiles: ["./vitest.setup.ts"],
         },

@@ -2,6 +2,7 @@
 
 import { useConvexOfflineDetector } from "@/lib/pwa/offline-detector";
 import { useEffect, useState, useRef } from "react";
+import { useOutbox } from "@/lib/offline/use-outbox";
 
 interface CacheItem<T = any> {
   data: T;
@@ -324,10 +325,8 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
   return hookResult;
 }
 
-export function useOfflineSync(): { queueCount: number } {
-  const [queueCount] = useState<number>(0); // Placeholder for now
-
-  return { queueCount };
+export function useOfflineSync() {
+  return useOutbox();
 }
 
 export function useOfflineState<T>(hookResult: T, cacheKey?: string): UseOfflineReturn<T> {
