@@ -52,6 +52,7 @@ import type * as lib_email_layout from "../lib/email_layout.js";
 import type * as lib_mailer from "../lib/mailer.js";
 import type * as lib_password from "../lib/password.js";
 import type * as lib_push_service from "../lib/push_service.js";
+import type * as lib_ranking_release from "../lib/ranking_release.js";
 import type * as lib_retrier from "../lib/retrier.js";
 
 import type {
@@ -105,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mailer": typeof lib_mailer;
   "lib/password": typeof lib_password;
   "lib/push_service": typeof lib_push_service;
+  "lib/ranking_release": typeof lib_ranking_release;
   "lib/retrier": typeof lib_retrier;
 }>;
 

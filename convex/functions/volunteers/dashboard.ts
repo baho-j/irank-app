@@ -390,7 +390,7 @@ export const getVolunteerLeaderboard = query({
           totalDebates,
           avgFeedbackScore: Math.round(avgFeedbackScore * 10) / 10,
           headJudgeCount,
-          rankChange: Math.random() > 0.6 ? 1 : Math.random() > 0.3 ? -1 : 0,
+          rankChange: 0,
         });
       }
     }
