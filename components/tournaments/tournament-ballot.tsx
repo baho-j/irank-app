@@ -73,6 +73,11 @@ import type {
 } from "@/components/tournaments/ballot/ballot-types";
 import type { BallotSubmission } from "@/components/tournaments/ballot/submission";
 import type { SpeakerPosition } from "@/components/tournaments/ballot/types";
+import { useAutosave } from "@/components/tournaments/ballot/use-autosave";
+import { SaveIndicator } from "@/components/tournaments/ballot/save-indicator";
+import { useSpeechTimer } from "@/components/tournaments/ballot/use-speech-timer";
+import { formatClock } from "@/lib/scoring/speech-timing";
+import { cn } from "@/lib/utils";
 import { useOffline } from "@/hooks/use-offline";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -170,14 +175,19 @@ function getDebateStatusIcon(status: string) {
 interface DebateTimerProps {
   debate: EnrichedDebate;
   token: string;
+  tournament?: BallotTournament;
+  position?: SpeakerPosition;
   onUpdateDebate?: (debate: EnrichedDebate) => void;
   onTimeUpdate?: (seconds: number) => void;
   compact?: boolean;
 }
 
-function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateTimerProps) {
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
+function DebateTimer({ debate, token, tournament, position = "first", onUpdateDebate, compact = false }: DebateTimerProps) {
+  const timer = useSpeechTimer({
+    speakingTimes: tournament?.speaking_times,
+    position,
+  });
+  const { elapsed: currentTime, isRunning } = timer;
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -189,16 +199,6 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const getFileUrl = useMutation(api.files.getUrl);
   const updateDebateRecording = useMutation(api.functions.ballots.updateRecording);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRunning) {
-      interval = setInterval(() => {
-        setCurrentTime(prev => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isRunning]);
 
   useEffect(() => {
     let recordingInterval: NodeJS.Timeout;
@@ -343,22 +343,22 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   if (compact) {
     return (
       <div className="flex items-center gap-2">
-        <div className="text-sm font-mono font-bold">
-          {formatTime(currentTime)}
+        <div
+          className={cn(
+            "text-sm font-mono font-bold tabular-nums",
+            timer.isOvertime && "text-destructive",
+            timer.phase === "grace" && "text-amber-600"
+          )}
+        >
+          {timer.display}
         </div>
 
         <div className="flex gap-1">
           <Button
-            onClick={() => setIsRunning(!isRunning)}
+            onClick={timer.toggle}
             variant={isRunning ? "destructive" : "default"}
             size="sm"
             className="h-5 w-5 p-0"
@@ -367,10 +367,7 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
           </Button>
 
           <Button
-            onClick={() => {
-              setCurrentTime(0);
-              setIsRunning(false);
-            }}
+            onClick={timer.reset}
             variant="outline"
             size="sm"
             className="h-5 w-5 p-0"
@@ -385,13 +382,29 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
   return (
     <Card className="p-4">
       <div className="text-center space-y-4">
-        <div className="text-2xl md:text-3xl font-bold font-mono">
-          {formatTime(currentTime)}
+        <div
+          className={cn(
+            "text-2xl md:text-3xl font-bold font-mono tabular-nums",
+            timer.isOvertime && "text-destructive",
+            timer.phase === "grace" && "text-amber-600"
+          )}
+        >
+          {timer.display}
+        </div>
+
+        <div className="space-y-1">
+          <Progress value={timer.progress} className="w-full" />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{timer.phaseLabel}</span>
+            <span className="tabular-nums">
+              {timer.isOvertime ? "over" : `${timer.remainingDisplay} left`}
+            </span>
+          </div>
         </div>
 
         <div className="flex justify-center gap-2 flex-wrap">
           <Button
-            onClick={() => setIsRunning(!isRunning)}
+            onClick={timer.toggle}
             variant={isRunning ? "destructive" : "default"}
             size="sm"
           >
@@ -399,10 +412,7 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
           </Button>
 
           <Button
-            onClick={() => {
-              setCurrentTime(0);
-              setIsRunning(false);
-            }}
+            onClick={timer.reset}
             variant="outline"
             size="sm"
           >
@@ -430,7 +440,7 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
           {isRecording && (
             <div className="text-red-600 font-medium flex items-center justify-center gap-1">
               <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
-              Recording: {formatTime(recordingDuration)}
+              Recording: {formatClock(recordingDuration)}
             </div>
           )}
 
@@ -438,7 +448,7 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateT
             <div className="text-green-600 text-xs space-y-2">
               <div className="flex items-center justify-center gap-1 text-sm">
                 <CircleCheck className="h-3 w-3" />
-                Recorded ({formatTime(debate.recording_duration || 0)})
+                Recorded ({formatClock(debate.recording_duration || 0)})
               </div>
 
               <div className="flex justify-center gap-1">
@@ -1319,6 +1329,19 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
     return outcome.valid ? null : outcome.message ?? null;
   }, [scores, speakerPositions, teamWinner, rfd, debate, unsupportedFormat]);
 
+  const draftPayload = useMemo(
+    () => ({ scores, speakerComments, speakerPositions, teamWinner, rfd, notes }),
+    [scores, speakerComments, speakerPositions, teamWinner, rfd, notes]
+  );
+
+  const autosave = useAutosave({
+    value: draftPayload,
+    enabled: canEdit && Object.keys(scores).length > 0,
+    onSave: async () => {
+      await handleSubmit(false, { silent: true });
+    },
+  });
+
   const speechTypeFor = (speakerId: string) =>
     (speakerPositions[speakerId] ?? "first") === "reply"
       ? ("reply" as const)
@@ -1374,7 +1397,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
     setSharedNotes(prev => [...prev, note]);
   };
 
-  const handleSubmit = async (isFinal: boolean = false) => {
+  const handleSubmit = async (isFinal: boolean = false, options: { silent?: boolean } = {}) => {
     if (userRole === "volunteer") {
       const isAssignedJudge = debate.judges?.some((j: any) => (j._id || j) === userId);
       if (!isAssignedJudge) {
@@ -1482,10 +1505,15 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
         });
       }
 
-      toast.success(isFinal ? "Ballot submitted successfully!" : "Ballot draft saved!");
+      if (!options.silent) {
+        toast.success(isFinal ? "Ballot submitted successfully!" : "Ballot draft saved!");
+      }
 
     } catch (error: any) {
-      toast.error(error.message || "Failed to submit ballot");
+      if (!options.silent) {
+        toast.error(error.message || "Failed to submit ballot");
+      }
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -1529,7 +1557,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                   </Badge>
                 )}
               </div>
-              <DebateTimer debate={debate} token={token} onTimeUpdate={() => {}} compact={true} />
+              <DebateTimer debate={debate} token={token} tournament={tournament} onTimeUpdate={() => {}} compact={true} />
             </DrawerTitle>
           </DrawerHeader>
 
@@ -1853,6 +1881,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     "Save Draft"
                   )}
                 </Button>
+                <SaveIndicator status={autosave.status} className="justify-center" />
                 <Button
                   onClick={() => handleSubmit(true)}
                   disabled={
@@ -2146,7 +2175,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
 
             <div className="space-y-4">
-              <DebateTimer debate={debate} token={token} onTimeUpdate={() => {}} />
+              <DebateTimer debate={debate} token={token} tournament={tournament} onTimeUpdate={() => {}} />
 
               {userRole === "admin" && debate.judges?.length > 0 && (
                 <Card className="p-4">
