@@ -6,6 +6,23 @@ import { paginationOptsValidator } from "convex/server";
 import { scoreBallot, speakerScoreValidator } from "../../lib/ballot_validation";
 import { updateDebateResults } from "../volunteers/ballots";
 
+/**
+ * The room's status as the tab team needs to see it: which rooms are holding
+ * up the round. A judge with no ballot row has not started, which is different
+ * from having started and not finished.
+ */
+function ballotStatusFor(
+  judgeCount: number,
+  submissions: Doc<"judging_scores">[]
+): "not_started" | "in_progress" | "submitted" {
+  const submitted = submissions.filter((s) => s.submission_state === "submitted").length;
+
+  if (judgeCount > 0 && submitted >= judgeCount) return "submitted";
+  if (submissions.length === 0) return "not_started";
+
+  return "in_progress";
+}
+
 export const getAllTournamentBallots = query({
   args: {
     token: v.string(),
@@ -84,6 +101,7 @@ export const getAllTournamentBallots = query({
             return {
               ...judge,
               has_submitted: !!submission,
+              submission_state: submission?.submission_state ?? "not_started",
               is_final: submission?.submission_state === "submitted",
               is_head_judge: debate.head_judge_id === judgeId,
               is_flagged: submission?.flagged ?? false,
@@ -121,6 +139,7 @@ export const getAllTournamentBallots = query({
           final_submissions_count: submissions.filter(s => s.submission_state === "submitted").length,
           completion_percentage: completionPercentage,
           has_flagged_ballots: submissions.some(s => s.flagged),
+          ballot_status: ballotStatusFor(debate.judges.length, submissions),
           argument_flow: debate.argument_flow || [],
           fact_checks: debate.fact_checks || [],
           shared_notes: debate.shared_notes || [],

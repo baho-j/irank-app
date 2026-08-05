@@ -304,13 +304,17 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   }, [scores, speakerPositions, teamWinner, rfd, debate, unsupportedFormat]);
 
   const draftPayload = useMemo(
-    () => ({ scores, speakerComments, speakerPositions, teamWinner, rfd, notes }),
-    [scores, speakerComments, speakerPositions, teamWinner, rfd, notes]
+    () => ({
+      scores, speakerComments, speakerPositions, teamWinner, rfd, notes,
+      argumentFlow, factChecks,
+    }),
+    [scores, speakerComments, speakerPositions, teamWinner, rfd, notes,
+      argumentFlow, factChecks]
   );
 
   const autosave = useAutosave({
     value: draftPayload,
-    enabled: canEdit && Object.keys(scores).length > 0,
+    enabled: canEdit && (Object.keys(scores).length > 0 || argumentFlow.length > 0),
     onSave: async (payload) => {
       if (userId) {
         await saveDraft(debate._id, userId, payload as Record<string, unknown>);
@@ -338,6 +342,8 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
       if (restored.teamWinner) setTeamWinner(restored.teamWinner);
       if (restored.rfd) setRfd(restored.rfd);
       if (restored.notes) setNotes(restored.notes);
+      if (restored.argumentFlow?.length) setArgumentFlow(restored.argumentFlow);
+      if (restored.factChecks?.length) setFactChecks(restored.factChecks);
 
       toast.info("Restored your in-progress ballot");
     });
