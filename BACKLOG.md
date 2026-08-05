@@ -144,12 +144,16 @@ Two bugs found during conversion, both fixed: `canEdit` used `!x === "submitted"
 
 | Item | Status |
 |---|---|
-| Dexie local store + migrations | ⬜ |
-| **Durable outbox with idempotency** | ⬜ |
+| Dexie local store + migrations | ✅ Done |
+| **Durable outbox with idempotency** | ✅ Done |
+| **Ballot drafts survive reload/crash** | ✅ Done |
+| Real queue count (was hardcoded `0`) | ✅ Done |
+| **Move `app/sw.js` → `public/sw.js`** | ✅ Done |
+| Fix push icon paths | ✅ Done |
+| Background sync wakes the page to drain | ✅ Done |
+| **Push notifications wired end to end** | ✅ Done |
 | Populate `sync_logs` | ⬜ |
-| **Move `app/sw.js` → `public/sw.js`** | ⬜ |
 | Workbox adoption | ⬜ |
-| Fix push icon paths | ⬜ |
 | Remove stack-trace cache keys | ⬜ |
 | Remove WebSocket monkey-patch | ⬜ |
 | Remove third-party connectivity pings | ⬜ |
