@@ -168,7 +168,11 @@ const checkAndUpdateRoundCompletion = async (ctx: any, roundId: Id<"rounds">) =>
       updated_at: Date.now(),
     });
 
-    console.log(`Round ${round.round_number} marked as completed - all debates finished and ballots submitted`);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.functions.notification_emails.sendRoundCompletedEmails,
+      { tournament_id: round.tournament_id, round_id: roundId }
+    );
   }
 };
 

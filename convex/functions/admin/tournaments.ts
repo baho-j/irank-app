@@ -855,3 +855,42 @@ export const getCoordinators = query({
     return sortedUsers;
   },
 });
+/**
+ * Releases an impromptu round's motion at the moment the tab team chooses,
+ * and tells everyone who needs it. Motions must not be visible before this.
+ */
+export const releaseMotion = mutation({
+  args: {
+    token: v.string(),
+    round_id: v.id("rounds"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const sessionResult = await ctx.runMutation(internal.functions.auth.verifySession, {
+      token: args.token,
+    });
+
+    if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
+      throw new Error("Admin access required");
+    }
+
+    const round = await ctx.db.get(args.round_id);
+
+    if (!round) {
+      throw new Error("Round not found");
+    }
+
+    if (round.motion_released_at) {
+      throw new Error("This motion has already been released");
+    }
+
+    await ctx.db.patch(args.round_id, { motion_released_at: Date.now() });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.functions.notification_emails.sendMotionReleasedEmails,
+      { tournament_id: round.tournament_id, round_id: args.round_id }
+    );
+
+    return { success: true };
+  },
+});

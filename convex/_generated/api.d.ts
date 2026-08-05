@@ -28,6 +28,8 @@ import type * as functions_ballots from "../functions/ballots.js";
 import type * as functions_email from "../functions/email.js";
 import type * as functions_invitations from "../functions/invitations.js";
 import type * as functions_leagues from "../functions/leagues.js";
+import type * as functions_notification_emails from "../functions/notification_emails.js";
+import type * as functions_notification_recipients from "../functions/notification_recipients.js";
 import type * as functions_notifications from "../functions/notifications.js";
 import type * as functions_pairings from "../functions/pairings.js";
 import type * as functions_rankings from "../functions/rankings.js";
@@ -46,6 +48,7 @@ import type * as functions_volunteers_ballots from "../functions/volunteers/ball
 import type * as functions_volunteers_dashboard from "../functions/volunteers/dashboard.js";
 import type * as lib_ballot_results from "../lib/ballot_results.js";
 import type * as lib_ballot_validation from "../lib/ballot_validation.js";
+import type * as lib_email_layout from "../lib/email_layout.js";
 import type * as lib_mailer from "../lib/mailer.js";
 import type * as lib_password from "../lib/password.js";
 import type * as lib_push_service from "../lib/push_service.js";
@@ -78,6 +81,8 @@ declare const fullApi: ApiFromModules<{
   "functions/email": typeof functions_email;
   "functions/invitations": typeof functions_invitations;
   "functions/leagues": typeof functions_leagues;
+  "functions/notification_emails": typeof functions_notification_emails;
+  "functions/notification_recipients": typeof functions_notification_recipients;
   "functions/notifications": typeof functions_notifications;
   "functions/pairings": typeof functions_pairings;
   "functions/rankings": typeof functions_rankings;
@@ -96,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "functions/volunteers/dashboard": typeof functions_volunteers_dashboard;
   "lib/ballot_results": typeof lib_ballot_results;
   "lib/ballot_validation": typeof lib_ballot_validation;
+  "lib/email_layout": typeof lib_email_layout;
   "lib/mailer": typeof lib_mailer;
   "lib/password": typeof lib_password;
   "lib/push_service": typeof lib_push_service;
