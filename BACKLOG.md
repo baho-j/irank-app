@@ -20,14 +20,14 @@ Work is blocked on these. Listed first because they gate implementation.
 
 | # | Question | Blocks | Status |
 |---|---|---|---|
-| D1 | Ranking weights (proposed 50/35/15) and questions A–G | `ranking-model.md`, league-wide rankings | 🔴 Awaiting sign-off |
+| D1 | Ranking weights and questions A–G | `ranking-model.md` | ✅ Signed off — 50/40/10 |
 | D2 | Appeals process for rejected approval/verification | Phase 2 Steps 4, 9 | 🔴 Open |
 | D3 | Do verification criteria differ per program? | Phase 2 Step 9 | 🔴 Open |
 | D4 | Reporting template for confirmation email | Phase 2 Step 4 | 🔴 Open |
 | D5 | Distribution of 50,000 vs 100,000 RWF | Phase 2 Step 6 | 🔴 Open |
 | D6 | Volume limits — flag or enforce? | Phase 2 dashboard | 🔴 Open |
-| D7 | SMTP sockets on Convex — spike result | Email transport choice | 🔴 Pending spike |
-| D8 | Bye credit policy (proposed: win + average points) | Pairing, rankings | 🔴 Open |
+| D7 | SMTP sockets on Convex | Email transport | ✅ Confirmed working (gmail:587 STARTTLS) |
+| D8 | Bye credit policy | Pairing, rankings | ✅ Win + same-stage average, at stage end |
 
 ---
 
@@ -54,7 +54,7 @@ Work is blocked on these. Listed first because they gate implementation.
 | Tournament fixtures (6–8 / 24–32 / 64+ teams) | ⬜ Blocked on `04-pairing` |
 | Auth-coverage reflective test (all public functions) | ⬜ |
 
-**Current tests: 48 passing** — analytics authorization (36), `updateRecording` authorization (5), Excel export adapter (7).
+**Current tests: 191 passing across 12 files.**
 
 **Lint debt.** `eslint-config-next` 16 enabled React Compiler rules that flag 121 pre-existing errors, previously hidden by `ignoreDuringBuilds: true`:
 
@@ -81,7 +81,7 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 | Migrate to `gemini-2.5-flash-lite` (2.0 was shut down 1 Jun 2026) | ✅ Done |
 | Replace legacy `@google/generative-ai` with `@google/genai` | ✅ Done |
 | **Rotate the exposed Gemini key** | ⬜ **Needs you — treat as compromised** |
-| Set `GEMINI_API_KEY` in Convex env | ⬜ **Needs you** |
+| Set `GEMINI_API_KEY` in Convex env | ✅ Done |
 | Audit all 28 files for missing auth | ⬜ |
 | Cross-role access tests | ⬜ Blocked on `00-foundations` |
 | **Upgrade `jspdf` 3.0.1 → 4.2.1 — cleared CRITICAL** | ✅ Done |
@@ -99,10 +99,13 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 
 | Item | Status |
 |---|---|
-| SMTP spike on Convex Node runtime | 🔴 D7 |
-| Provider interface | ⬜ |
-| Migrate `email.ts` off Resend | 🔴 D7 |
-| Delivery verification to real inboxes | ⬜ |
+| SMTP spike on Convex Node runtime | ✅ Done — sockets work |
+| Provider interface (`convex/lib/mailer.ts`) | ✅ Done |
+| Migrate `email.ts` off Resend | ✅ Done |
+| Retry via `@convex-dev/action-retrier` | ✅ Done |
+| Branded template shell with logo | ✅ Done |
+| Ranking release / payment / completion / motion / round emails | ✅ Done |
+| Delivery verification to real inboxes | ⬜ **Needs manual check** |
 | Bulk send at league scale | ⬜ |
 
 ### 02 — Ballot · `specs/02-ballot.md`
@@ -131,10 +134,14 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 | Client-side submission guard mirroring server rules | ✅ Done |
 | Half-mark score entry with per-criterion ranges | ✅ Done |
 | Extract `components/tournaments/ballot/` (hook + 10 tests) | ✅ Done |
-| Format "Coming soon" badges in the UI | ⬜ Mutation rejects already; badge outstanding |
-| Flowing notes with continuous auto-save | ⬜ Blocked on `03-offline` |
-| Timer wired to `speaking_times`, persisted | ⬜ |
-| Finish decomposing `tournament-ballot.tsx` | ⬜ Seam established; remaining sections not yet moved |
+| Format "Coming soon" badges in the UI | ✅ Done |
+| Exactly 3 speakers enforced for World Schools | ✅ Done |
+| `team_size` + duplicate-position validation on ballots | ✅ Done |
+| Typed component props (was `any` ×10) | ✅ Done |
+| Auto-save on edit with animated indicator | ✅ Done |
+| Timer wired to `speaking_times`, with warnings and chimes | ✅ Done |
+| Flowing notes with continuous auto-save | ⬜ Argument-flow UX rebuild outstanding |
+| Finish decomposing `tournament-ballot.tsx` | ⬜ Seam established; render sections not yet moved |
 
 **Old schema is fully gone** — no `role_fulfillment`, `argumentation_clash`, `content_development`, `style_strategy_delivery`, `feedback_submitted`, or `attendanceBonus` anywhere in source.
 
