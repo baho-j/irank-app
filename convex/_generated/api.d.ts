@@ -42,6 +42,7 @@ import type * as functions_schools from "../functions/schools.js";
 import type * as functions_student_analytics from "../functions/student/analytics.js";
 import type * as functions_student_dashboard from "../functions/student/dashboard.js";
 import type * as functions_student_teams from "../functions/student/teams.js";
+import type * as functions_team_lineups from "../functions/team_lineups.js";
 import type * as functions_teams from "../functions/teams.js";
 import type * as functions_tournaments from "../functions/tournaments.js";
 import type * as functions_users from "../functions/users.js";
@@ -98,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "functions/student/analytics": typeof functions_student_analytics;
   "functions/student/dashboard": typeof functions_student_dashboard;
   "functions/student/teams": typeof functions_student_teams;
+  "functions/team_lineups": typeof functions_team_lineups;
   "functions/teams": typeof functions_teams;
   "functions/tournaments": typeof functions_tournaments;
   "functions/users": typeof functions_users;

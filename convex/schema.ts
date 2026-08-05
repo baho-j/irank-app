@@ -760,6 +760,26 @@ export default defineSchema({
     .index("by_tier", ["tier"])
     .index("by_rank", ["rank"]),
 
+  team_lineups: defineTable({
+    debate_id: v.id("debates"),
+    team_id: v.id("teams"),
+    tournament_id: v.id("tournaments"),
+    speakers: v.array(v.object({
+      speaker_id: v.id("users"),
+      position: v.union(
+        v.literal("first"),
+        v.literal("second"),
+        v.literal("third"),
+        v.literal("reply")
+      ),
+    })),
+    set_by: v.id("users"),
+    set_at: v.number(),
+  })
+    .index("by_debate_id", ["debate_id"])
+    .index("by_debate_id_team_id", ["debate_id", "team_id"])
+    .index("by_tournament_id", ["tournament_id"]),
+
   ranking_snapshots: defineTable({
     scope: v.union(v.literal("student"), v.literal("school"), v.literal("volunteer")),
     entity_id: v.string(),
