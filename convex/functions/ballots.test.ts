@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api } from "../_generated/api";
-import { createSchool, createUserWithSession, setupTest } from "../test_helpers";
+import { createSchool, createUserWithSession, setupTest } from "../test_helpers.test-utils";
 import { Id } from "../_generated/dataModel";
 
 async function createDebateWithJudge(

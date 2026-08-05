@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api } from "../_generated/api";
-import { createUserWithSession, setupTest } from "../test_helpers";
+import { createUserWithSession, setupTest } from "../test_helpers.test-utils";
 
 const AI_ACTIONS = [
   ["validateFeedback", { content: "Good speech." }],

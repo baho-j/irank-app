@@ -32,19 +32,25 @@ Convex supports a Node runtime via `"use node"` (Node 20/22/24, 512MB, 10-minute
 
 A throwaway `"use node"` action that sends a single message via Nodemailer against the real SMTP host. Timeboxed. The only question: do outbound SMTP sockets open from a Convex action?
 
-### Step 2a — If sockets work
+### Spike result — SMTP works
 
-Migrate `email.ts` to Nodemailer behind a provider interface:
+**Answered.** Nodemailer connects and authenticates against `smtp.gmail.com:587` with STARTTLS. `transporter.verify()` succeeds, so Convex's Node runtime does permit outbound SMTP sockets and the HTTP-API fallback below is not needed.
 
-- Connection pooling for bulk sends
-- Retry with backoff on transient failures
-- Per-message result recorded, not fire-and-forget
+### Step 2a — Chosen path
 
-### Step 2b — If sockets are blocked
+`email.ts` runs under `"use node"` and sends through `convex/lib/mailer.ts`:
 
-Use an HTTP-API provider callable with plain `fetch` — Brevo, Mailgun, or SES. Same provider interface, no redesign; only the adapter differs.
+- Pooled transport (`maxConnections: 5`, `maxMessages: 100`) for bulk sends
+- `secure` is derived from the port, since 465 is implicit TLS and 587 upgrades via STARTTLS
+- Per-message result returned, never fire-and-forget
 
-Either path ends at the same place, which is why the interface is defined before the transport is chosen.
+**Retry** uses the official `@convex-dev/action-retrier` component rather than a hand-rolled loop. `convex/lib/retrier.ts` configures it (1s initial backoff, base 2, 4 attempts) and public send actions enqueue the internal `deliver` action through `retrier.run`. `deliver` throws on failure because a thrown error is the retrier's retry signal.
+
+Consequence worth noting: public send actions now return a `runId` and report the message as **queued**, not sent. Delivery happens asynchronously with retries. Callers that need confirmed delivery must query the run status rather than trusting the immediate return.
+
+### Step 2b — If sockets had been blocked
+
+Would have used an HTTP-API provider callable with plain `fetch` (Brevo, Mailgun, SES) behind the same interface. Not needed.
 
 ### Provider interface
 

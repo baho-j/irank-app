@@ -1,8 +1,44 @@
-import { action } from "../_generated/server";
-import { v } from "convex/values";
-import { Resend } from "resend";
+"use node";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { action, internalAction } from "../_generated/server";
+import { v } from "convex/values";
+import { sendEmail } from "../lib/mailer";
+import { internal } from "../_generated/api";
+import { emailRetrier } from "../lib/retrier";
+
+/**
+ * The single point where mail actually leaves the system. Public actions
+ * enqueue this through the retrier so a transient SMTP failure is retried with
+ * backoff instead of being reported to the caller as a failed send.
+ *
+ * Throwing rather than returning an error is deliberate: the retrier treats a
+ * thrown error as the retry signal.
+ */
+type EmailQueueResult = {
+  success: boolean;
+  message?: string;
+  runId?: string;
+  error?: string;
+};
+
+export const deliver = internalAction({
+  args: {
+    to: v.string(),
+    subject: v.string(),
+    html: v.string(),
+    text: v.optional(v.string()),
+    headers: v.optional(v.record(v.string(), v.string())),
+  },
+  handler: async (_ctx, args) => {
+    const result = await sendEmail(args);
+
+    if (!result.success) {
+      throw new Error(result.error ?? "Failed to send email");
+    }
+
+    return { messageId: result.messageId };
+  },
+});
 
 async function sendTournamentInvitation({
                                           to,
@@ -72,22 +108,21 @@ async function sendTournamentInvitation({
   );
 
   try {
-    const result = await resend.emails.send({
-      from: process.env.SMTP_FROM!,
-      to: [to],
+    const result = await sendEmail({
+      to: to,
       subject: `Tournament Invitation: ${tournamentName}`,
       html: emailHtml,
       text: emailText,
-      tags: [
-        { name: "type", value: "tournament_invitation" },
-        { name: "tournament", value: tournamentSlug },
-        { name: "invitation_type", value: invitationType },
-      ],
+        headers: {
+          "X-iRank-Type": String("tournament_invitation"),
+          "X-iRank-Tournament": String(tournamentSlug),
+          "X-iRank-Invitation-Type": String(invitationType),
+      },
     });
 
     return {
-      success: true,
-      messageId: result.data?.id,
+      success: result.success,
+      messageId: result.messageId,
       error: result.error,
     };
   } catch (error: any) {
@@ -200,25 +235,24 @@ export const sendWelcomeEmail = action({
     name: v.string(),
     role: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<EmailQueueResult> => {
     try {
       const html = getWelcomeEmailTemplate(args.name, args.role);
 
-      const result = await resend.emails.send({
-        from: process.env.SMTP_FROM!,
-        to: [args.email],
+      const runId = await emailRetrier.run(ctx, internal.functions.email.deliver, {
+        to: args.email,
         subject: "Welcome to iRankHub!",
         html,
-        tags: [
-          { name: "type", value: "welcome" },
-          { name: "role", value: args.role },
-        ],
+        headers: {
+          "X-iRank-Type": String("welcome"),
+          "X-iRank-Role": String(args.role),
+        },
       });
 
       return {
         success: true,
-        message: "Welcome email sent successfully",
-        messageId: result.data?.id,
+        message: "Welcome email queued for delivery",
+        runId,
       };
     } catch (error: any) {
       console.error("Failed to send welcome email:", error);
@@ -239,7 +273,7 @@ export const sendMagicLinkEmail = action({
       v.literal("password_reset"),
     ),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<EmailQueueResult> => {
     try {
       const baseUrl = process.env.FRONTEND_SITE_URL || "http://localhost:3000";
       let magicLinkUrl: string;
@@ -258,21 +292,20 @@ export const sendMagicLinkEmail = action({
 
       const html = getMagicLinkEmailTemplate(args.purpose, magicLinkUrl);
 
-      const result = await resend.emails.send({
-        from: process.env.SMTP_FROM!,
-        to: [args.email],
+      const runId = await emailRetrier.run(ctx, internal.functions.email.deliver, {
+        to: args.email,
         subject,
         html,
-        tags: [
-          { name: "type", value: "magic_link" },
-          { name: "purpose", value: args.purpose },
-        ],
+        headers: {
+          "X-iRank-Type": String("magic_link"),
+          "X-iRank-Purpose": String(args.purpose),
+        },
       });
 
       return {
         success: true,
-        message: "Magic link email sent successfully",
-        messageId: result.data?.id,
+        message: "Magic link email queued for delivery",
+        runId,
       };
     } catch (error: any) {
       console.error("Failed to send magic link email:", error);
@@ -290,26 +323,25 @@ export const sendAccountApprovedEmail = action({
     name: v.string(),
     role: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<EmailQueueResult> => {
     try {
       const dashboardUrl = `${process.env.FRONTEND_SITE_URL || 'http://localhost:3000'}/${args.role === 'school_admin' ? 'school' : args.role}/dashboard`;
       const html = getAccountApprovedEmailTemplate(args.name, args.role, dashboardUrl);
 
-      const result = await resend.emails.send({
-        from: process.env.SMTP_FROM!,
-        to: [args.email],
+      const runId = await emailRetrier.run(ctx, internal.functions.email.deliver, {
+        to: args.email,
         subject: "Your iRankHub Account Has Been Approved!",
         html,
-        tags: [
-          { name: "type", value: "account_approved" },
-          { name: "role", value: args.role },
-        ],
+        headers: {
+          "X-iRank-Type": String("account_approved"),
+          "X-iRank-Role": String(args.role),
+        },
       });
 
       return {
         success: true,
-        message: "Account approval email sent successfully",
-        messageId: result.data?.id,
+        message: "Account approval email queued for delivery",
+        runId,
       };
     } catch (error: any) {
       console.error("Failed to send account approval email:", error);
@@ -326,25 +358,24 @@ export const sendPasswordResetEmail = action({
     email: v.string(),
     token: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<EmailQueueResult> => {
     try {
       const resetUrl = `${process.env.FRONTEND_SITE_URL || 'http://localhost:3000'}/auth/reset-password?token=${args.token}`;
       const html = getPasswordResetEmailTemplate(resetUrl);
 
-      const result = await resend.emails.send({
-        from: process.env.SMTP_FROM!,
-        to: [args.email],
+      const runId = await emailRetrier.run(ctx, internal.functions.email.deliver, {
+        to: args.email,
         subject: "Reset Your iRankHub Password",
         html,
-        tags: [
-          { name: "type", value: "password_reset" },
-        ],
+        headers: {
+          "X-iRank-Type": String("password_reset"),
+        },
       });
 
       return {
         success: true,
-        message: "Password reset email sent successfully",
-        messageId: result.data?.id,
+        message: "Password reset email queued for delivery",
+        runId,
       };
     } catch (error: any) {
       console.error("Failed to send password reset email:", error);
@@ -378,20 +409,19 @@ export const sendBulkNotificationEmails = action({
           try {
             const html = getCustomEmailTemplate(args.template, recipient.name, recipient.customData);
 
-            const result = await resend.emails.send({
-              from: process.env.SMTP_FROM!,
-              to: [recipient.email],
+            const result = await sendEmail({
+              to: recipient.email,
               subject: args.subject,
               html,
-              tags: [
-                { name: "type", value: "bulk_notification" },
-              ],
+        headers: {
+          "X-iRank-Type": String("bulk_notification"),
+        },
             });
 
             return {
               email: recipient.email,
               success: true,
-              messageId: result.data?.id,
+              messageId: result.messageId,
             };
           } catch (error: any) {
             return {

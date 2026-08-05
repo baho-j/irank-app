@@ -906,7 +906,7 @@ export const enableMFA = mutation({
         throw new Error("Invalid session");
       }
 
-      const user = await ctx.db.get(sessionResult.user.id);
+      const user: Doc<"users"> | null = await ctx.db.get(sessionResult.user.id);
       if (!user) {
         throw new Error("User not found");
       }
@@ -958,7 +958,7 @@ export const disableMFA = mutation({
         throw new Error("Invalid session");
       }
 
-      const user = await ctx.db.get(sessionResult.user.id);
+      const user: Doc<"users"> | null = await ctx.db.get(sessionResult.user.id);
       if (!user) {
         throw new Error("User not found");
       }
@@ -1170,7 +1170,7 @@ export const updateSecurityQuestion = mutation({
         throw new Error("Invalid session");
       }
 
-      const user = await ctx.db.get(sessionResult.user.id);
+      const user: Doc<"users"> | null = await ctx.db.get(sessionResult.user.id);
       if (!user || !("password_hash" in user)) {
         throw new Error("Invalid user record");
       }
@@ -1235,7 +1235,7 @@ export const changePassword = mutation({
         throw new Error("Invalid session");
       }
 
-      const user = await ctx.db.get(sessionResult.user.id);
+      const user: Doc<"users"> | null = await ctx.db.get(sessionResult.user.id);
       if (!user || !("password_hash" in user)) {
         throw new Error("User not found or invalid user record");
       }
