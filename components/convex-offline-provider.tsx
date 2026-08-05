@@ -12,7 +12,19 @@ interface ConvexOfflineProviderProps {
 
 function OfflineBanner() {
     const { isOffline } = useConvexOfflineDetector();
-    const { queueCount } = useOfflineSync();
+    const { queueCount, sync } = useOfflineSync();
+
+    useEffect(() => {
+        if (!("serviceWorker" in navigator)) return;
+
+        const onMessage = (event: MessageEvent) => {
+            if (event.data?.type === "SYNC_OUTBOX") void sync();
+        };
+
+        navigator.serviceWorker.addEventListener("message", onMessage);
+
+        return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+    }, [sync]);
     const [show, setShow] = useState(false);
     const [mounted, setMounted] = useState(false);
 
