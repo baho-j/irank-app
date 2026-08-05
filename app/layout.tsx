@@ -2,7 +2,9 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { Suspense } from "react";
 import { ConvexOfflineProvider } from "@/components/convex-offline-provider";
+import { RouteProgress } from "@/components/navigation/route-progress";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/hooks/use-auth";
 import React from "react";
@@ -28,6 +30,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
     <body className={inter.className}>
     <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
+      <Suspense fallback={null}>
+        <RouteProgress />
+      </Suspense>
       <ConvexOfflineProvider>
         <PWAProvider>
         <AuthProvider>
