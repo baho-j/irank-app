@@ -191,3 +191,23 @@ Wire to `tournament.speaking_times`. Standard warnings (protected time, overtime
 - Attendance and participation scoring → `05-rankings.md`, `ranking-model.md`
 - Student→judge and panel feedback flows → `07-phase2.md`
 - Break calculation from ballot results → `04-pairing.md`
+
+---
+
+## Outstanding — raised in review, not yet built
+
+### Auto-save on interaction, not on a button
+
+`in_progress` is currently written only when the judge clicks **Save Draft**. It should be written on any meaningful action — a score entered, a comment typed — so Tab's Not Started / In Progress / Submitted view reflects reality and the deliverables' "no manual Save action required at any point" is actually met. Depends on `03-offline.md` for the local layer; the server side is already correct.
+
+### Timer is decorative
+
+`DebateTimer` is a `setInterval` counting up from zero. It does **not** read `tournament.speaking_times`, has **no audible or visual warnings** (protected time, overtime), and never persists `current_speaker` / `current_position` / `time_remaining` — those schema fields are dead. Recording works and uploads; the timer around it does not do what a judge needs. The deliverable asks for "standard time warnings" explicitly.
+
+### Argument flow needs a UX rebuild
+
+The flow tool works mechanically but the interaction is poor: linking a rebuttal to the argument it answers is unclear, and the relationship is not visible once recorded. This is the judge's primary live-capture tool and is meant to feed the RFD directly. Treat the current implementation as a prototype to be redesigned, not adjusted.
+
+### Email templates are not on brand
+
+Templates in `convex/functions/email.ts` use hardcoded colours (`#f97316` orange, `#a16207`, `#2c1810`) and carry **no logo**. They should use the platform palette and mark, defined once and shared, rather than per-template hex values. Emails sent today: tournament invitation (single and bulk), welcome, magic link, account approved, password reset, and bulk notifications.

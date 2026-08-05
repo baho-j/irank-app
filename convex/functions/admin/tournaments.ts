@@ -89,8 +89,8 @@ export const createTournament = mutation({
       throw new Error("Team size must be between 1 and 5");
     }
 
-    if (tournamentData.format === "WorldSchools" && tournamentData.team_size > 3) {
-      throw new Error("World Schools format allows maximum 3 speakers per team");
+    if (tournamentData.format === "WorldSchools" && tournamentData.team_size !== 3) {
+      throw new Error("World Schools requires exactly 3 speakers per team");
     }
 
     if (tournamentData.league_id) {
@@ -264,8 +264,8 @@ export const updateTournament = mutation({
       throw new Error("Team size must be between 1 and 5");
     }
 
-    if (updateData.format === "WorldSchools" && updateData.team_size > 3) {
-      throw new Error("World Schools format allows maximum 3 speakers per team");
+    if (updateData.format === "WorldSchools" && updateData.team_size !== 3) {
+      throw new Error("World Schools requires exactly 3 speakers per team");
     }
 
     const duplicateTournament = await ctx.db

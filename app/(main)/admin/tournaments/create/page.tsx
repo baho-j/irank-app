@@ -57,7 +57,7 @@ import { FileUpload } from "@/components/file-upload"
 import { VolunteerSchoolSelector } from "@/components/school-selector"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { TOURNAMENT_FORMATS, isSupportedFormat } from "@/lib/tournament-formats"
+import { TOURNAMENT_FORMATS, isSupportedFormat, WORLD_SCHOOLS_TEAM_SIZE } from "@/lib/tournament-formats"
 import { format } from "date-fns"
 import {
   ChevronDown,
@@ -365,8 +365,8 @@ export default function CreateTournamentPage() {
       newErrors.format = "Only World Schools tournaments are supported at the moment"
     }
 
-    if (formData.format === "WorldSchools" && formData.teamSize > 3) {
-      newErrors.teamSize = "World Schools format allows maximum 3 speakers"
+    if (formData.format === "WorldSchools" && formData.teamSize !== WORLD_SCHOOLS_TEAM_SIZE) {
+      newErrors.teamSize = `World Schools requires exactly ${WORLD_SCHOOLS_TEAM_SIZE} speakers per team`
     }
 
     if (formData.prelimRounds < 1 ) {
@@ -753,7 +753,7 @@ export default function CreateTournamentPage() {
                         <SelectItem
                           key={size}
                           value={size.toString()}
-                          disabled={formData.format === "WorldSchools" && size > 3}
+                          disabled={formData.format === "WorldSchools" && size !== WORLD_SCHOOLS_TEAM_SIZE}
                         >
                           {size} speaker{size > 1 ? "s" : ""}
                         </SelectItem>
