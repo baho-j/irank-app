@@ -60,6 +60,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useGemini } from "@/hooks/use-gemini";
 import { speechTotal, rangesFor, validateSpeechScore, validateOutcome, type SpeechScore } from "@/lib/scoring/wsdc";
 import { EMPTY_SCORE, MIN_RFD_LENGTH } from "@/components/tournaments/ballot/types";
+import { isSupportedFormat } from "@/lib/tournament-formats";
 import { useOffline } from "@/hooks/use-offline";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -1201,7 +1202,15 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
     }));
   };
 
+  const unsupportedFormat = tournament?.format && !isSupportedFormat(tournament.format)
+    ? tournament.format
+    : null;
+
   const submissionBlockedReason = useMemo(() => {
+    if (unsupportedFormat) {
+      return `Ballots are only available for World Schools tournaments. ${unsupportedFormat} support is coming soon.`;
+    }
+
     const scored = Object.entries(scores);
     if (scored.length === 0) return "Score every speaker before submitting.";
 
@@ -1235,7 +1244,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
     const outcome = validateOutcome(winnerTotal, loserTotal);
     return outcome.valid ? null : outcome.message ?? null;
-  }, [scores, speakerPositions, teamWinner, rfd, debate]);
+  }, [scores, speakerPositions, teamWinner, rfd, debate, unsupportedFormat]);
 
   const speechTypeFor = (speakerId: string) =>
     (speakerPositions[speakerId] ?? "first") === "reply"

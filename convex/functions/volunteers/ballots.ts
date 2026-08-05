@@ -290,6 +290,7 @@ export const submitBallot = mutation({
       winning_team_id: args.winning_team_id,
       rfd: args.rfd,
       is_final_submission: args.is_final_submission,
+      team_size: tournament?.team_size,
     });
 
     const now = Date.now();

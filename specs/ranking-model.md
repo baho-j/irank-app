@@ -49,7 +49,7 @@ iDebate confirmed these are genuinely different competitions:
 | **Local** | **Total** speaker points — a speaker in more debates is *intentionally* favoured | none |
 | **International** | **Average** speaker score | **none** — explicitly no minimum-debates threshold |
 
-The proposed minimum-debates threshold was **rejected**. Ranking basis is therefore a property of the tournament, not a global constant, and needs a field distinguishing local from international events.
+The proposed minimum-debates threshold was **rejected**. Ranking basis is therefore a property of the tournament, not a global constant, resolved through `tournaments.league_id` → `leagues.type`.
 
 Remaining tiebreakers, unchanged: team wins → highest individual score → lowest points deviation → name.
 
@@ -159,6 +159,6 @@ These become typed constants in one configuration module, changeable without tou
 
 Two decisions have structural consequences beyond a constants file:
 
-1. **Local vs international ranking basis (B)** needs a field on `tournaments` distinguishing the two. `leagues.type` already carries `Local | International | Dreams Mode` and may be sufficient, but a tournament in a local league could still be run to international rules — confirm before relying on it.
+1. **Local vs international ranking basis (B)** uses the existing `leagues.type` (`Local | International | Dreams Mode`, `schema.ts:168`) reached through `tournaments.league_id`. **No new field is required** — confirmed against the schema. `02b-team-lineups.md` gates squad rotation on the same lookup.
 
 2. **Stage-end bye credit (A)** means speaker points for a bye are not knowable when the bye is assigned. Standings computed mid-stage must represent a bye as *win, points pending* rather than as zero points, or the affected team will appear to be losing ground until the stage closes.

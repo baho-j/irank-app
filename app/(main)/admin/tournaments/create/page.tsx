@@ -57,6 +57,7 @@ import { FileUpload } from "@/components/file-upload"
 import { VolunteerSchoolSelector } from "@/components/school-selector"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { TOURNAMENT_FORMATS, isSupportedFormat } from "@/lib/tournament-formats"
 import { format } from "date-fns"
 import {
   ChevronDown,
@@ -104,14 +105,6 @@ interface FormData {
   }>
   image?: Id<"_storage">
 }
-
-const FORMATS = [
-  { value: "WorldSchools", label: "World Schools" },
-  { value: "BritishParliamentary", label: "British Parliamentary" },
-  { value: "PublicForum", label: "Public Forum" },
-  { value: "LincolnDouglas", label: "Lincoln Douglas" },
-  { value: "OxfordStyle", label: "Oxford Style" }
-]
 
 const DEFAULT_SPEAKING_TIMES = {
   WorldSchools: { speaker1: 5, speaker2: 5, speaker3: 5 },
@@ -366,6 +359,10 @@ export default function CreateTournamentPage() {
 
     if (formData.teamSize < 1 || formData.teamSize > 5) {
       newErrors.teamSize = "Team size must be between 1 and 5"
+    }
+
+    if (!isSupportedFormat(formData.format)) {
+      newErrors.format = "Only World Schools tournaments are supported at the moment"
     }
 
     if (formData.format === "WorldSchools" && formData.teamSize > 3) {
@@ -722,9 +719,20 @@ export default function CreateTournamentPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {FORMATS.map((format) => (
-                        <SelectItem key={format.value} value={format.value}>
-                          {format.label}
+                      {TOURNAMENT_FORMATS.map((format) => (
+                        <SelectItem
+                          key={format.value}
+                          value={format.value}
+                          disabled={!format.supported}
+                        >
+                          <span className="flex items-center gap-2">
+                            {format.label}
+                            {!format.supported && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                Coming soon
+                              </Badge>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>

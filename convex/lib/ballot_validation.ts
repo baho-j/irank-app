@@ -53,6 +53,7 @@ export function scoreBallot(input: {
   winning_team_id: Id<"teams">;
   rfd?: string;
   is_final_submission: boolean;
+  team_size?: number;
 }) {
   const scored = input.speaker_scores.map((speaker) => {
     const issues = validateSpeechScore(speaker, speaker.speech_type);
@@ -87,6 +88,32 @@ export function scoreBallot(input: {
 
   if (totalsByTeam.size !== 2) {
     throw new Error("A ballot must score exactly two teams.");
+  }
+
+  const duplicatePosition = scored.some((speaker, index) =>
+    scored.some(
+      (other, otherIndex) =>
+        otherIndex !== index &&
+        other.team_id === speaker.team_id &&
+        other.position === speaker.position
+    )
+  );
+
+  if (duplicatePosition) {
+    throw new Error("Each speaking position may only be scored once per team.");
+  }
+
+  if (input.team_size !== undefined) {
+    for (const [teamId, _total] of totalsByTeam) {
+      const speeches = scored.filter((speaker) => speaker.team_id === teamId);
+      const substantive = speeches.filter((s) => s.speech_type === "substantive").length;
+
+      if (substantive !== input.team_size) {
+        throw new Error(
+          `Each team must have exactly ${input.team_size} substantive speeches scored; one team has ${substantive}.`
+        );
+      }
+    }
   }
 
   const winnerTotal = totalsByTeam.get(input.winning_team_id);

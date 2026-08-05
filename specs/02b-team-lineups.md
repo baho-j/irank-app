@@ -38,14 +38,20 @@ team_lineups: {
 Keyed on debate rather than round because a team plays one debate per round, and the ballot already loads by debate — this avoids a second lookup on the judge's critical path.
 
 Rules:
-- Lineups are only editable for tournaments where rotation is permitted; otherwise the roster is fixed and the lineup is derived from `members`.
+- Lineups are only editable when the tournament's league is `International`; otherwise the roster is fixed and the lineup is derived from `members`.
 - Every speaker in a lineup must be a registered member of that team.
 - A position may not be assigned twice in one lineup.
-- Lineup size must equal `team_size`.
+- Lineup size must equal `tournaments.team_size`, matching what `scoreBallot` already enforces on submission.
 - Changing a lineup after that debate's ballots are submitted is blocked, since it would silently reattribute scores.
 - Absent a lineup, the ballot falls back to `members` in order, preserving current behaviour for local tournaments.
 
-Rotation is gated on the same tournament-scope field that `ranking-model.md` decision B needs for local-versus-international speaker ranking. **Both features depend on it, so it should be added once and shared** — see the implementation note in that spec.
+**No new field is needed.** `leagues.type` is already `Local | International | Dreams Mode` (`convex/schema.ts:168`), and `tournaments.league_id` links to it. Rotation is permitted when the tournament's league is `International`; the same lookup answers the local-versus-international speaker ranking basis in `ranking-model.md` decision B.
+
+### Speakers per team
+
+`tournaments.team_size` (`schema.ts:223`) is the number of speakers a team fields, validated at creation as 1–5 with a World Schools cap of 3 (`admin/tournaments.ts:88-92`). It was **not** enforced anywhere on the ballot — the ballot rendered every entry in `teams.members`, so a 5-person squad would have presented five speakers to score.
+
+`scoreBallot` now requires exactly `team_size` substantive speeches per team, and rejects a speaking position used twice within a team. Reply speeches are counted separately so they do not violate the substantive count. A lineup must therefore satisfy the same rule: exactly `team_size` speakers, each in a distinct position.
 
 ## Acceptance criteria
 

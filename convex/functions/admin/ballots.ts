@@ -360,11 +360,20 @@ export const submitBallot = mutation({
       throw new Error("Final ballot already submitted for this judge");
     }
 
+    const tournament = await ctx.db.get(debate.tournament_id);
+
+    if (tournament && tournament.format !== "WorldSchools") {
+      throw new Error(
+        `Ballots are only available for World Schools tournaments. ${tournament.format} support is coming soon.`
+      );
+    }
+
     const processedSpeakerScores = scoreBallot({
       speaker_scores: args.speaker_scores,
       winning_team_id: args.winning_team_id,
       rfd: args.rfd,
       is_final_submission: args.is_final_submission,
+      team_size: tournament?.team_size,
     });
 
     const now = Date.now();
