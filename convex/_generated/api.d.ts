@@ -36,6 +36,7 @@ import type * as functions_rankings from "../functions/rankings.js";
 import type * as functions_school_analytics from "../functions/school/analytics.js";
 import type * as functions_school_dashboard from "../functions/school/dashboard.js";
 import type * as functions_school_students from "../functions/school/students.js";
+import type * as functions_school_tiers from "../functions/school_tiers.js";
 import type * as functions_schools from "../functions/schools.js";
 import type * as functions_student_analytics from "../functions/student/analytics.js";
 import type * as functions_student_dashboard from "../functions/student/dashboard.js";
@@ -90,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   "functions/school/analytics": typeof functions_school_analytics;
   "functions/school/dashboard": typeof functions_school_dashboard;
   "functions/school/students": typeof functions_school_students;
+  "functions/school_tiers": typeof functions_school_tiers;
   "functions/schools": typeof functions_schools;
   "functions/student/analytics": typeof functions_student_analytics;
   "functions/student/dashboard": typeof functions_student_dashboard;

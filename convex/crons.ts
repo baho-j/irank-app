@@ -15,6 +15,14 @@ crons.interval(
   internal.functions.notifications.cleanupExpiredNotifications,
 );
 
+// Tiers are relative, so one school's result can move another's band. They are
+// recomputed for the whole league rather than per school.
+crons.daily(
+  "recalculate school tiers",
+  { hourUTC: 3, minuteUTC: 30 },
+  internal.functions.school_tiers.recalculateTiers,
+);
+
 crons.daily(
   "cleanup inactive subscriptions",
   { hourUTC: 2, minuteUTC: 0 },

@@ -729,6 +729,34 @@ export default defineSchema({
       filterFields: ["user_id", "action", "resource_type", "timestamp"]
     }),
 
+  school_tiers: defineTable({
+    school_id: v.id("schools"),
+    tier: v.union(
+      v.literal("elite"),
+      v.literal("advanced"),
+      v.literal("developing"),
+      v.literal("beginner")
+    ),
+    pending_tier: v.optional(v.union(
+      v.literal("elite"),
+      v.literal("advanced"),
+      v.literal("developing"),
+      v.literal("beginner")
+    )),
+    pending_count: v.optional(v.number()),
+    score: v.number(),
+    performance_score: v.number(),
+    attendance_score: v.number(),
+    hosting_score: v.number(),
+    verified_activities: v.number(),
+    rank: v.number(),
+    evaluated_at: v.number(),
+    changed_at: v.optional(v.number()),
+  })
+    .index("by_school_id", ["school_id"])
+    .index("by_tier", ["tier"])
+    .index("by_rank", ["rank"]),
+
   payments: defineTable({
     tournament_id: v.id("tournaments"),
     school_id: v.optional(v.id("schools")),
