@@ -58,6 +58,8 @@ import {
 import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
 import { useGemini } from "@/hooks/use-gemini";
+import { speechTotal, rangesFor, validateSpeechScore, validateOutcome, type SpeechScore } from "@/lib/scoring/wsdc";
+import { EMPTY_SCORE, MIN_RFD_LENGTH } from "@/components/tournaments/ballot/types";
 import { useOffline } from "@/hooks/use-offline";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -72,36 +74,28 @@ interface TournamentBallotsProps {
 
 const SCORING_CATEGORIES = [
   {
-    key: "role_fulfillment",
-    label: "Role Fulfillment",
-    icon: Target,
-    description: "WSDC role expectations, setup, structure, and position understanding",
-    color: "text-blue-600",
-    maxScore: 25
-  },
-  {
-    key: "argumentation_clash",
-    label: "Argumentation & Clash",
-    icon: Shield,
-    description: "Logic, development, rebuttal, defense, and weighing",
-    color: "text-green-600",
-    maxScore: 25
-  },
-  {
-    key: "content_development",
-    label: "Content Development",
-    icon: Brain,
-    description: "Fresh ideas, examples, analysis, and case evolution",
-    color: "text-purple-600",
-    maxScore: 25
-  },
-  {
-    key: "style_strategy_delivery",
-    label: "Style, Strategy & Delivery",
+    key: "style" as const,
+    label: "Style",
     icon: Users2,
-    description: "Clarity, persuasion, prioritization, and strategic adaptation",
-    color: "text-orange-600",
-    maxScore: 25
+    description: "Delivery, clarity, pace, volume, and engagement",
+    color: "text-blue-600",
+    weight: "40%",
+  },
+  {
+    key: "content" as const,
+    label: "Content",
+    icon: Brain,
+    description: "Arguments, evidence, analysis, and rebuttal",
+    color: "text-green-600",
+    weight: "40%",
+  },
+  {
+    key: "strategy" as const,
+    label: "Strategy",
+    icon: Target,
+    description: "Structure, prioritisation, timing, and role fulfilment",
+    color: "text-purple-600",
+    weight: "20%",
   },
 ];
 
@@ -157,22 +151,6 @@ function getDebateStatusIcon(status: string) {
     case "noShow": return AlertTriangle;
     default: return Clock;
   }
-}
-
-function calculateFinalScore(scores: Record<string, number>): number {
-
-  const rubricScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
-
-  const attendanceBonus = 5;
-  const totalRaw = rubricScore + attendanceBonus;
-
-  let finalScore = (totalRaw / 105) * 30;
-
-  if (finalScore < 16.3) {
-    finalScore = 16.3;
-  }
-
-  return Math.round(finalScore * 10) / 10;
 }
 
 
@@ -1087,10 +1065,12 @@ export function useNames(token: string, userIds: string[]) {
 
 function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, token, userRole }: any) {
   const { validateFeedback, checkBias, isValidating, isBiasChecking } = useGemini();
-  const [scores, setScores] = useState<Record<string, Record<string, number>>>({});
+  const [scores, setScores] = useState<Record<string, SpeechScore>>({});
   const [teamWinner, setTeamWinner] = useState<string>("");
   const [winningPosition, setWinningPosition] = useState<"proposition" | "opposition" | "">("");
   const [notes, setNotes] = useState("");
+  const [rfd, setRfd] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const [speakerComments, setSpeakerComments] = useState<Record<string, string>>({});
   const [teamComments, setTeamComments] = useState<Record<string, string>>({});
   const [speakerPositions, setSpeakerPositions] = useState<Record<string, string>>({});
@@ -1118,14 +1098,14 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
       )?.ballot;
 
       if (selectedJudgeBallot) {
-        const loadedScores: Record<string, Record<string, number>> = {};
+        const loadedScores: Record<string, SpeechScore> = {};
 
         selectedJudgeBallot.speaker_scores?.forEach((score: any) => {
           loadedScores[score.speaker_id] = {
-            role_fulfillment: score.role_fulfillment || 0,
-            argumentation_clash: score.argumentation_clash || 0,
-            content_development: score.content_development || 0,
-            style_strategy_delivery: score.style_strategy_delivery || 0,
+            style: score.style ?? Number.NaN,
+            content: score.content ?? Number.NaN,
+            strategy: score.strategy ?? Number.NaN,
+            poi_modifier: score.poi_modifier ?? 0,
           };
         });
 
@@ -1144,7 +1124,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   }, [userRole, selectedJudgeId, debate.judges_ballots]);
 
   const isHeadJudge = debate.head_judge_id === debate.my_submission?.judge_id;
-  const canEdit = !ballot?.feedback_submitted;
+  const canEdit = ballot?.submission_state !== "submitted";
 
   const allSpeakers = [
     ...(debate.proposition_team?.members || []),
@@ -1190,13 +1170,13 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
   useEffect(() => {
     if (ballot) {
-      const loadedScores: Record<string, Record<string, number>> = {};
+      const loadedScores: Record<string, SpeechScore> = {};
       ballot.speaker_scores?.forEach((score: any) => {
         loadedScores[score.speaker_id] = {
-          role_fulfillment: score.role_fulfillment || 0,
-          argumentation_clash: score.argumentation_clash || 0,
-          content_development: score.content_development || 0,
-          style_strategy_delivery: score.style_strategy_delivery || 0,
+          style: score.style ?? Number.NaN,
+          content: score.content ?? Number.NaN,
+          strategy: score.strategy ?? Number.NaN,
+          poi_modifier: score.poi_modifier ?? 0,
         };
         setSpeakerComments(prev => ({
           ...prev,
@@ -1210,16 +1190,57 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
     }
   }, [ballot]);
 
-  const updateScore = (speakerId: string, category: string, value: number) => {
+  const updateScore = (speakerId: string, category: keyof SpeechScore, value: number) => {
     if (!canEdit) return;
     setScores(prev => ({
       ...prev,
       [speakerId]: {
-        ...prev[speakerId],
-        [category]: Math.max(10, Math.min(25, value))
+        ...(prev[speakerId] ?? EMPTY_SCORE),
+        [category]: value,
       }
     }));
   };
+
+  const submissionBlockedReason = useMemo(() => {
+    const scored = Object.entries(scores);
+    if (scored.length === 0) return "Score every speaker before submitting.";
+
+    for (const [speakerId, score] of scored) {
+      const speechType = (speakerPositions[speakerId] ?? "first") === "reply"
+        ? ("reply" as const)
+        : ("substantive" as const);
+      const issues = validateSpeechScore(score, speechType);
+      if (issues.length > 0) return issues[0].message;
+    }
+
+    if (!teamWinner) return "Select the winning team.";
+    if (rfd.trim().length < MIN_RFD_LENGTH) {
+      return `The reason for decision needs at least ${MIN_RFD_LENGTH} characters.`;
+    }
+
+    const totals = new Map<string, number>();
+    scored.forEach(([speakerId, score]) => {
+      const teamId = debate.proposition_team?.members?.includes(speakerId)
+        ? debate.proposition_team._id
+        : debate.opposition_team?._id;
+      const speechType = (speakerPositions[speakerId] ?? "first") === "reply"
+        ? ("reply" as const)
+        : ("substantive" as const);
+      if (teamId) totals.set(teamId, (totals.get(teamId) ?? 0) + speechTotal(score, speechType));
+    });
+
+    const winnerTotal = totals.get(teamWinner);
+    const loserTotal = Array.from(totals.entries()).find(([id]) => id !== teamWinner)?.[1];
+    if (winnerTotal === undefined || loserTotal === undefined) return null;
+
+    const outcome = validateOutcome(winnerTotal, loserTotal);
+    return outcome.valid ? null : outcome.message ?? null;
+  }, [scores, speakerPositions, teamWinner, rfd, debate]);
+
+  const speechTypeFor = (speakerId: string) =>
+    (speakerPositions[speakerId] ?? "first") === "reply"
+      ? ("reply" as const)
+      : ("substantive" as const);
 
   const updateSpeakerComment = (speakerId: string, comment: string) => {
     if (!canEdit) return;
@@ -1279,7 +1300,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
         return;
       }
 
-      if (ballot?.feedback_submitted) {
+      if (ballot?.submission_state === "submitted") {
         toast.error("You have already submitted a final ballot for this debate");
         return;
       }
@@ -1301,9 +1322,8 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
         return;
       }
 
-      const speakerScores = Object.entries(scores).map(([speakerId, categoryScores]) => {
-        const finalScore = calculateFinalScore(categoryScores);
-        const position = speakerPositions[speakerId] || "Speaker";
+      const speakerScores = Object.entries(scores).map(([speakerId, speechScore]) => {
+        const position = speakerPositions[speakerId] ?? "first";
         const biasResult = biasCheckResults[speakerId];
 
         return {
@@ -1312,8 +1332,11 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
             ? debate.proposition_team._id
             : debate.opposition_team._id,
           position,
-          score: finalScore,
-          ...categoryScores,
+          speech_type: position === "reply" ? ("reply" as const) : ("substantive" as const),
+          style: speechScore.style,
+          content: speechScore.content,
+          strategy: speechScore.strategy,
+          poi_modifier: speechScore.poi_modifier ?? 0,
           comments: speakerComments[speakerId] || "",
           bias_detected: biasResult?.hasBias || false,
           bias_explanation: biasResult?.suggestions?.join("; ") || "",
@@ -1330,12 +1353,13 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
           await onSubmitBallot({
             type: "admin_update",
             ballot_id: existingBallot._id,
+            reason: correctionReason.trim() || "Ballot corrected by coordinator",
             updates: {
               winning_team_id: teamWinner as Id<"teams">,
               winning_position: winningPosition as "proposition" | "opposition",
               speaker_scores: speakerScores,
+              rfd,
               notes,
-              feedback_submitted: isFinal,
             }
           });
         } else {
@@ -1348,6 +1372,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
             winning_team_id: teamWinner as Id<"teams">,
             winning_position: winningPosition as "proposition" | "opposition",
             speaker_scores: speakerScores,
+            rfd,
             notes,
             is_final_submission: isFinal,
           });
@@ -1361,6 +1386,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
           winning_team_id: teamWinner as Id<"teams">,
           winning_position: winningPosition as "proposition" | "opposition",
           speaker_scores: speakerScores,
+          rfd,
           notes,
           is_final_submission: isFinal,
           fact_checks: factChecks.length > 0 ? factChecks : undefined,
@@ -1482,8 +1508,11 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
 
                       {selectedTeamSpeakers.map((speakerId: string) => {
-                        const speakerScores = scores[speakerId] || {};
-                        const finalScore = calculateFinalScore(speakerScores);
+                        const speakerScores = scores[speakerId] || EMPTY_SCORE;
+                        const speechType = (speakerPositions[speakerId] ?? "first") === "reply"
+                          ? "reply" as const
+                          : "substantive" as const;
+                        const finalScore = speechTotal(speakerScores, speechType);
                         const biasResult = biasCheckResults[speakerId];
 
                         return (
@@ -1512,14 +1541,18 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                                       <div className="flex items-center gap-2">
                                         <Input
                                           type="number"
-                                          min="0"
-                                          max="25"
-                                          value={speakerScores[category.key] || 0}
-                                          onChange={(e) => updateScore(speakerId, category.key, parseInt(e.target.value) || 0)}
+                                          inputMode="decimal"
+                                          step={0.5}
+                                          min={rangesFor(speechTypeFor(speakerId))[category.key].min}
+                                          max={rangesFor(speechTypeFor(speakerId))[category.key].max}
+                                          value={Number.isFinite(speakerScores[category.key]) ? speakerScores[category.key] : ""}
+                                          onChange={(e) => updateScore(speakerId, category.key, Number.parseFloat(e.target.value))}
                                           disabled={!canEdit}
-                                          className="w-16 text-center"
+                                          className="w-20 text-center tabular-nums"
                                         />
-                                        <span className="text-xs text-muted-foreground">/25</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          /{rangesFor(speechTypeFor(speakerId))[category.key].max}
+                                        </span>
                                       </div>
                                     </div>
                                   );
@@ -1627,8 +1660,8 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                                     <span>{judge.name || `Judge ${(judge._id || judge).slice(-4)}`}</span>
                                     {judge.is_head_judge && <Crown className="h-3 w-3" />}
                                     {existingBallot && (
-                                      <Badge variant={existingBallot.feedback_submitted ? "default" : "secondary"} className="text-xs">
-                                        {existingBallot.feedback_submitted ? "Final" : "Draft"}
+                                      <Badge variant={existingBallot.submission_state === "submitted" ? "default" : "secondary"} className="text-xs">
+                                        {existingBallot.submission_state === "submitted" ? "Final" : "Draft"}
                                       </Badge>
                                     )}
                                   </div>
@@ -1645,7 +1678,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                             <Alert>
                               <AlertCircle className="h-4 w-4" />
                               <AlertDescription className="text-xs">
-                                {selectedJudgeBallot.feedback_submitted
+                                {selectedJudgeBallot.submission_state === "submitted"
                                   ? "This judge has a final ballot. You can update it."
                                   : "This judge has a draft ballot. You can update it."
                                 }
@@ -1708,7 +1741,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
               </Alert>
             )}
 
-            {ballot?.feedback_submitted ? (
+            {ballot?.submission_state === "submitted" ? (
               <Alert>
                 <CheckCircle className="h-4 w-4" />
                 <AlertDescription>
@@ -1736,16 +1769,21 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                   onClick={() => handleSubmit(true)}
                   disabled={
                     isSubmitting ||
-                    !teamWinner ||
+                    !!submissionBlockedReason ||
                     isValidating ||
                     availableTeams.length === 0 ||
-                    (userRole === "volunteer" && ballot?.feedback_submitted) ||
+                    (userRole === "volunteer" && ballot?.submission_state === "submitted") ||
                     (userRole === "admin" && !selectedJudgeId)
                   }
                   className="w-full"
                 >
                   {isSubmitting ? "Submitting..." : "Submit Final Ballot"}
                 </Button>
+                {submissionBlockedReason && canEdit && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    {submissionBlockedReason}
+                  </p>
+                )}
               </div>
             ) : null}
           </div>
@@ -1815,8 +1853,11 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     <Label className="text-base font-medium">Individual Speaker Scores - {selectedTeamData.name}</Label>
 
                     {selectedTeamSpeakers.map((speakerId: string) => {
-                      const speakerScores = scores[speakerId] || {};
-                      const finalScore = calculateFinalScore(speakerScores);
+                      const speakerScores = scores[speakerId] || EMPTY_SCORE;
+                      const speechType = (speakerPositions[speakerId] ?? "first") === "reply"
+                        ? "reply" as const
+                        : "substantive" as const;
+                      const finalScore = speechTotal(speakerScores, speechType);
                       const biasResult = biasCheckResults[speakerId];
                       const isExpanded = expandedSpeaker === speakerId;
 
@@ -1865,7 +1906,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                                   {SCORING_CATEGORIES.map((category) => {
                                     const CategoryIcon = category.icon;
-                                    const score = speakerScores[category.key] || 0;
+                                    const score = speakerScores[category.key];
                                     return (
                                       <div key={category.key} className="space-y-2">
                                         <Label className="text-sm flex items-center gap-2">
@@ -1876,16 +1917,25 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                                           <div className="flex items-center gap-2">
                                             <Input
                                               type="number"
-                                              min="10"
-                                              max="25"
-                                              value={score}
-                                              onChange={(e) => updateScore(speakerId, category.key, parseInt(e.target.value) || 0)}
+                                              inputMode="decimal"
+                                              step={0.5}
+                                              min={rangesFor(speechTypeFor(speakerId))[category.key].min}
+                                              max={rangesFor(speechTypeFor(speakerId))[category.key].max}
+                                              value={Number.isFinite(score) ? score : ""}
+                                              onChange={(e) => updateScore(speakerId, category.key, Number.parseFloat(e.target.value))}
                                               disabled={!canEdit}
-                                              className="w-20"
+                                              className="w-20 tabular-nums"
                                             />
-                                            <span className="text-sm text-muted-foreground">/ 25</span>
+                                            <span className="text-sm text-muted-foreground">
+                                              / {rangesFor(speechTypeFor(speakerId))[category.key].max}
+                                            </span>
                                           </div>
-                                          <Progress value={(score / 25) * 100} className="w-full" />
+                                          <Progress
+                                            value={Number.isFinite(score)
+                                              ? (score / rangesFor(speechTypeFor(speakerId))[category.key].max) * 100
+                                              : 0}
+                                            className="w-full"
+                                          />
                                         </div>
                                         <p className="text-xs text-muted-foreground">{category.description}</p>
                                       </div>
@@ -1975,6 +2025,26 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
 
               <div className="space-y-2">
+                <Label htmlFor="ballot-rfd" className="text-base font-medium">
+                  Reason for Decision <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="ballot-rfd"
+                  placeholder="Explain the decision: the main clash, which team won it, and why."
+                  value={rfd}
+                  onChange={(e) => setRfd(e.target.value)}
+                  disabled={!canEdit}
+                  rows={5}
+                  aria-describedby="ballot-rfd-hint"
+                />
+                <p id="ballot-rfd-hint" className="text-xs text-muted-foreground">
+                  {rfd.trim().length >= MIN_RFD_LENGTH
+                    ? "Required before submitting"
+                    : `${MIN_RFD_LENGTH - rfd.trim().length} more characters needed before you can submit`}
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label className="text-base font-medium">General Judge Notes</Label>
                 <Textarea
                   placeholder="Overall observations about the debate, flow, and general comments..."
@@ -2009,8 +2079,8 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                                 <span>{judge.name || `Judge ${(judge._id || judge).slice(-4)}`}</span>
                                 {judge.is_head_judge && <Crown className="h-3 w-3" />}
                                 {existingBallot && (
-                                  <Badge variant={existingBallot.feedback_submitted ? "default" : "secondary"} className="text-xs">
-                                    {existingBallot.feedback_submitted ? "Final" : "Draft"}
+                                  <Badge variant={existingBallot.submission_state === "submitted" ? "default" : "secondary"} className="text-xs">
+                                    {existingBallot.submission_state === "submitted" ? "Final" : "Draft"}
                                   </Badge>
                                 )}
                               </div>
@@ -2027,7 +2097,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                         <Alert>
                           <AlertCircle className="h-4 w-4" />
                           <AlertDescription className="text-xs">
-                            {selectedJudgeBallot.feedback_submitted
+                            {selectedJudgeBallot.submission_state === "submitted"
                               ? "This judge has a final ballot. You can update it."
                               : "This judge has a draft ballot. You can update it."
                             }
@@ -2138,16 +2208,21 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                 onClick={() => handleSubmit(true)}
                 disabled={
                   isSubmitting ||
-                  !teamWinner ||
+                  !!submissionBlockedReason ||
                   isValidating ||
                   availableTeams.length === 0 ||
-                  (userRole === "volunteer" && ballot?.feedback_submitted) ||
+                  (userRole === "volunteer" && ballot?.submission_state === "submitted") ||
                   (userRole === "admin" && !selectedJudgeId)
                 }
                 className="w-full"
               >
                 {isSubmitting ? "Submitting..." : "Submit Final Ballot"}
               </Button>
+              {submissionBlockedReason && canEdit && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {submissionBlockedReason}
+                </p>
+              )}
               <Button
                 onClick={handleValidation}
                 variant="outline"
@@ -2160,7 +2235,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
             </div>
           )}
 
-          {ballot?.feedback_submitted && (
+          {ballot?.submission_state === "submitted" && (
             <Alert className="mt-6">
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
@@ -2888,7 +2963,7 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
                                   Head
                                 </Badge>
                               )}
-                              {ballot.feedback_submitted && (
+                              {ballot.submission_state === "submitted" && (
                                 <Badge variant="outline" className="text-green-600 text-xs">
                                   <CheckCircle className="h-3 w-3 mr-1" />
                                   Final
@@ -3007,7 +3082,7 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
                                                           <CategoryIcon className={`h-3 w-3 ${category.color}`} />
                                                           <span className="text-xs font-medium truncate">{category.label.split(' ')[0]}</span>
                                                         </div>
-                                                        <div className="text-sm font-bold">{categoryScore}/25</div>
+                                                        <div className="text-sm font-bold tabular-nums">{categoryScore}</div>
                                                         <Progress value={(categoryScore / 25) * 100} className="h-1 mt-1" />
                                                       </div>
                                                     );
@@ -3096,7 +3171,7 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
                                                           <CategoryIcon className={`h-3 w-3 ${category.color}`} />
                                                           <span className="text-xs font-medium truncate">{category.label.split(' ')[0]}</span>
                                                         </div>
-                                                        <div className="text-sm font-bold">{categoryScore}/25</div>
+                                                        <div className="text-sm font-bold tabular-nums">{categoryScore}</div>
                                                         <Progress value={(categoryScore / 25) * 100} className="h-1 mt-1" />
                                                       </div>
                                                     );
@@ -3152,7 +3227,7 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
                         <span>
                           Submitted: {ballot.submitted_at ? new Date(ballot.submitted_at).toLocaleString() : "Not submitted"}
                         </span>
-                        {ballot.feedback_submitted && (
+                        {ballot.submission_state === "submitted" && (
                           <span className="text-green-600 font-medium">Final Submission</span>
                         )}
                       </div>
@@ -3221,7 +3296,7 @@ function FlagBallotDialog({ debate, isOpen, onClose, onFlag, userRole }: any) {
     if (userRole === "admin") {
 
       return debate?.judges_ballots
-        ?.filter((jb: any) => jb.ballot?.feedback_submitted)
+        ?.filter((jb: any) => jb.ballot?.submission_state === "submitted")
         ?.map((jb: any) => ({
           id: jb.ballot._id,
           judgeName: jb.judge_name || debate.judges?.find((j: any) => j._id === jb.judge_id)?.name || `Judge ${jb.judge_id.slice(-4)}`,
@@ -3687,6 +3762,7 @@ export default function TournamentBallots({
         await updateBallot({
           token,
           ballot_id: ballotData.ballot_id,
+          reason: ballotData.reason,
           updates: ballotData.updates,
         });
       } else if (ballotData.type === "admin_submit") {

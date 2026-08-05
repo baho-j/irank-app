@@ -149,8 +149,9 @@ const checkAndUpdateRoundCompletion = async (ctx: any, roundId: Id<"rounds">) =>
     if (debate.judges && debate.judges.length > 0) {
       const submissions = await ctx.db
         .query("judging_scores")
-        .withIndex("by_debate_id", (q: any) => q.eq("debate_id", debate._id))
-        .filter((q: any) => q.eq(q.field("feedback_submitted"), true))
+        .withIndex("by_debate_id_submission_state", (q: any) =>
+          q.eq("debate_id", debate._id).eq("submission_state", "submitted")
+        )
         .collect();
 
       if (submissions.length < debate.judges.length) {
