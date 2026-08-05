@@ -13,6 +13,9 @@ export const cacheKeys = {
   tierTable: () => "tier-table",
   tournamentRankings: (tournamentId: string, scope: string) =>
     `tournament-rankings:${tournamentId}:${scope}`,
+  /** Cached in-tournament state, by kind, so a whole tournament can travel. */
+  tournamentState: (kind: string, tournamentId: string) =>
+    `state:${kind}:${tournamentId}`,
 };
 
 export async function writeCache(

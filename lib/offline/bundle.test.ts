@@ -245,3 +245,60 @@ describe("applying a review", () => {
     expect(result.failed).toHaveLength(0);
   });
 });
+
+describe("the bundle covers the whole tournament", () => {
+  test("carries tournament details, teams, the draw, lineups and payments", async () => {
+    await writeCache(cacheKeys.tournamentState("tournament", "t1"), { name: "Kigali Open" });
+    await writeCache(cacheKeys.tournamentState("team", "t1"), [{ team_id: "a" }]);
+    await writeCache(cacheKeys.tournamentState("pairing", "t1"), [{ room_name: "Room 1" }]);
+    await writeCache(cacheKeys.tournamentState("lineup", "t1"), [{ team_id: "a" }]);
+    await writeCache(cacheKeys.tournamentState("payment", "t1"), [{ school_id: "sc1" }]);
+
+    const bundle = await buildBundle({ tournamentId: "t1" });
+    const types = new Set(bundle.entities.map((entity) => entity.type));
+
+    expect(types).toContain("tournament");
+    expect(types).toContain("team");
+    expect(types).toContain("pairing");
+    expect(types).toContain("lineup");
+    expect(types).toContain("payment");
+  });
+
+  test("the draw travels with its rooms intact", async () => {
+    await writeCache(cacheKeys.tournamentState("pairing", "t1"), [
+      { room_name: "Room 1", proposition_team_id: "a", opposition_team_id: "b" },
+    ]);
+
+    const bundle = await buildBundle({ tournamentId: "t1", include: ["pairing"] });
+    const draw = bundle.entities[0].payload as any[];
+
+    expect(draw[0].room_name).toBe("Room 1");
+    expect(draw[0].proposition_team_id).toBe("a");
+  });
+
+  test("finance can be withheld when sharing with someone who should not see it", async () => {
+    await writeCache(cacheKeys.tournamentState("payment", "t1"), [{ amount: 50000 }]);
+    await writeCache(cacheKeys.tournamentState("pairing", "t1"), [{ room_name: "Room 1" }]);
+
+    const bundle = await buildBundle({
+      tournamentId: "t1",
+      include: ["pairing"],
+    });
+
+    expect(bundle.entities.some((entity) => entity.type === "payment")).toBe(false);
+    expect(bundle.entities.some((entity) => entity.type === "pairing")).toBe(true);
+  });
+
+  test("a whole-tournament bundle is accepted and reviewable per item", async () => {
+    await writeCache(cacheKeys.tournamentState("pairing", "t1"), [{ room_name: "Room 1" }]);
+    await writeCache(cacheKeys.tournamentState("team", "t1"), [{ team_id: "a" }]);
+    await writeCache(cacheKeys.leaderboard("student"), RANKINGS);
+
+    const bundle = await buildBundle({ tournamentId: "t1" });
+
+    expect(validateBundle(bundle, { tournamentId: "t1" }).valid).toBe(true);
+
+    const review = await prepareReview(bundle);
+    expect(review).toHaveLength(bundle.entities.length);
+  });
+});

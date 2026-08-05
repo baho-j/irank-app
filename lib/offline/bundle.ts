@@ -4,12 +4,39 @@ import { pending } from "./outbox";
 
 export const BUNDLE_VERSION = 1;
 
+const TYPE_LABELS: Record<string, string> = {
+  tournament: "Tournament details",
+  team: "Teams and registrations",
+  pairing: "Draw and room assignments",
+  lineup: "Speaker lineups",
+  payment: "Payments and fees",
+};
+
+/**
+ * Everything an in-tournament device may need to hand to another. Finance is
+ * included because a coordinator reconciling payments at a venue needs it as
+ * much as the tab team needs the draw.
+ */
 export type BundleEntityType =
+  | "tournament"
+  | "team"
+  | "pairing"
   | "ballot"
   | "draft"
   | "lineup"
   | "ranking"
   | "payment";
+
+export const ALL_ENTITY_TYPES: BundleEntityType[] = [
+  "tournament",
+  "team",
+  "pairing",
+  "ballot",
+  "draft",
+  "lineup",
+  "ranking",
+  "payment",
+];
 
 export interface BundleEntity {
   type: BundleEntityType;
@@ -70,14 +97,15 @@ export interface BuildBundleOptions {
 }
 
 /**
- * Collects what this device knows into a transferable bundle.
+ * Collects everything this device knows about the tournament into a
+ * transferable bundle: its details, teams, the draw, ballots waiting to sync,
+ * in-progress drafts, lineups, payments and released rankings.
  *
- * Rankings are included because a coordinator without connectivity needs the
- * standings as much as the ballots behind them, and only released ones are
- * ever cached locally in the first place.
+ * Only released rankings are ever cached locally, so nothing unreleased can
+ * travel this way.
  */
 export async function buildBundle(options: BuildBundleOptions = {}): Promise<Bundle> {
-  const include = options.include ?? ["ballot", "draft", "lineup", "ranking"];
+  const include = options.include ?? ALL_ENTITY_TYPES;
   const entities: BundleEntity[] = [];
   const db = getDb();
 
@@ -111,6 +139,22 @@ export async function buildBundle(options: BuildBundleOptions = {}): Promise<Bun
         updated_at: draft.updated_at,
       });
     });
+  }
+
+  for (const type of ["tournament", "team", "pairing", "lineup", "payment"] as const) {
+    if (!include.includes(type)) continue;
+
+    const cached = await readCache(cacheKeys.tournamentState(type, options.tournamentId ?? "all"));
+
+    if (cached) {
+      entities.push({
+        type,
+        id: cacheKeys.tournamentState(type, options.tournamentId ?? "all"),
+        label: TYPE_LABELS[type],
+        payload: cached.value,
+        updated_at: cached.updated_at,
+      });
+    }
   }
 
   if (include.includes("ranking")) {
