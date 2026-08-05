@@ -222,24 +222,6 @@ function isMutationFunction<T>(value: T): value is T extends Function ? T : neve
   return typeof value === 'function';
 }
 
-function generateCacheKey(): string {
-  const stack: string = new Error().stack || '';
-  const lines: string[] = stack.split('\n');
-
-  for (let i = 0; i < lines.length; i++) {
-    const line: string = lines[i];
-    if (line.includes('.tsx') || line.includes('.jsx')) {
-      const match: RegExpMatchArray | null = line.match(/\/([^\/]+)\.(tsx|jsx):(\d+)/) || line.match(/\/([^\/]+)\.(tsx|jsx)/);
-      if (match) {
-        const fileName: string = match[1];
-        const lineNumber: string = match[3] || 'unknown';
-        return `${fileName}_line_${lineNumber}`;
-      }
-    }
-  }
-
-  return `offline_query_${Math.random().toString(36).substring(2, 8)}`;
-}
 
 interface UseOfflineReturn<T> {
   data: T;
@@ -259,15 +241,11 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
     setMounted(true);
   }, []);
 
-  if (!generatedKeyRef.current) {
-    generatedKeyRef.current = cacheKey || generateCacheKey();
-  }
-
-  const finalCacheKey: string = cacheKey || generatedKeyRef.current;
+  const finalCacheKey: string | null = cacheKey ?? null;
 
   useEffect(() => {
 
-    if (!mounted || typeof window === 'undefined') {
+    if (!mounted || !finalCacheKey || typeof window === 'undefined') {
       return;
     }
 
