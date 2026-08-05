@@ -54,7 +54,7 @@ Work is blocked on these. Listed first because they gate implementation.
 | Tournament fixtures (6–8 / 24–32 / 64+ teams) | ⬜ Blocked on `04-pairing` |
 | Auth-coverage reflective test (all public functions) | ⬜ |
 
-**Current tests: 191 passing across 12 files.**
+**Current tests: 268 passing across 17 files.**
 
 **Lint debt.** `eslint-config-next` 16 enabled React Compiler rules that flag 121 pre-existing errors, previously hidden by `ignoreDuringBuilds: true`:
 
@@ -199,16 +199,22 @@ Two bugs found during conversion, both fixed: `canEdit` used `!x === "submitted"
 
 | Item | Status |
 |---|---|
-| **Shared `isTournamentCountable` predicate** | ⬜ |
-| **Gate global rankings on release** | ⬜ |
-| Filter to submitted ballots only | ⬜ |
-| Filter to completed tournaments | ⬜ |
-| **Delete `Math.random()` rank changes** | ⬜ |
-| Real rank deltas from snapshots | ⬜ |
-| Fix `tournamentsCount` | ⬜ |
-| Separate in-tournament vs league-wide layers | ⬜ |
-| School tiers (Elite/Advanced/Developing/Beginner) | 🔴 D1 |
-| League-wide weights | 🔴 D1 |
+| **Shared `isTournamentCountable` predicate** | ✅ Done |
+| **Gate global rankings on release** | ✅ Done |
+| Filter to submitted ballots only | ✅ Done |
+| Filter to completed tournaments | ✅ Done |
+| **Delete `Math.random()` rank changes** | ✅ Done |
+| Fix `tournamentsCount` | ✅ Done |
+| Separate in-tournament vs league-wide layers | ✅ Done |
+| Real rank deltas from snapshots | ⬜ Reports 0 until snapshots exist |
+| **School tiers (Elite/Advanced/Developing/Beginner)** | ✅ Done |
+| **League-wide weights 50/40/10** | ✅ Done |
+| Percentile bands + Elite activity floor | ✅ Done |
+| Tier damping (two consecutive evaluations) | ✅ Done |
+| Local vs international speaker basis via `leagues.type` | ✅ Done |
+| Stage-end bye credit (win + same-stage average) | ✅ Done |
+| Team score double-count guard | ✅ Done |
+| Nightly tier recalculation cron | ✅ Done |
 | Eliminate full-table scans | ⬜ |
 | Fix duplicated ranking computation | ⬜ |
 | Ranking snapshots at release | ⬜ |
