@@ -863,8 +863,10 @@ export const releaseMotion = mutation({
   args: {
     token: v.string(),
     round_id: v.id("rounds"),
+    /** Omit to release now; set a future time to schedule it. */
+    release_at: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{ success: boolean }> => {
+  handler: async (ctx, args): Promise<{ success: boolean; release_at?: number }> => {
     const sessionResult = await ctx.runMutation(internal.functions.auth.verifySession, {
       token: args.token,
     });
@@ -879,18 +881,28 @@ export const releaseMotion = mutation({
       throw new Error("Round not found");
     }
 
-    if (round.motion_released_at) {
+    const now = Date.now();
+
+    if (round.motion_released_at && round.motion_released_at <= now) {
       throw new Error("This motion has already been released");
     }
 
-    await ctx.db.patch(args.round_id, { motion_released_at: Date.now() });
+    const releaseAt = args.release_at ?? now;
 
-    await ctx.scheduler.runAfter(
-      0,
+    if (releaseAt < now) {
+      throw new Error("A motion cannot be released in the past");
+    }
+
+    await ctx.db.patch(args.round_id, { motion_released_at: releaseAt });
+
+    // Scheduling the notification at the release moment is what makes every
+    // room learn the motion at the same time.
+    await ctx.scheduler.runAt(
+      releaseAt,
       internal.functions.notification_emails.sendMotionReleasedEmails,
       { tournament_id: round.tournament_id, round_id: args.round_id }
     );
 
-    return { success: true };
+    return { success: true, release_at: releaseAt };
   },
 });

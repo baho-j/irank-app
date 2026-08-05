@@ -53,6 +53,7 @@ import type * as lib_ballot_results from "../lib/ballot_results.js";
 import type * as lib_ballot_validation from "../lib/ballot_validation.js";
 import type * as lib_email_layout from "../lib/email_layout.js";
 import type * as lib_mailer from "../lib/mailer.js";
+import type * as lib_motion_release from "../lib/motion_release.js";
 import type * as lib_password from "../lib/password.js";
 import type * as lib_push_service from "../lib/push_service.js";
 import type * as lib_ranking_release from "../lib/ranking_release.js";
@@ -110,6 +111,7 @@ declare const fullApi: ApiFromModules<{
   "lib/ballot_validation": typeof lib_ballot_validation;
   "lib/email_layout": typeof lib_email_layout;
   "lib/mailer": typeof lib_mailer;
+  "lib/motion_release": typeof lib_motion_release;
   "lib/password": typeof lib_password;
   "lib/push_service": typeof lib_push_service;
   "lib/ranking_release": typeof lib_ranking_release;

@@ -2,6 +2,7 @@ import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import { visibleMotion } from "../lib/motion_release";
 import { paginationOptsValidator } from "convex/server";
 
 interface TeamPairingData {
@@ -270,7 +271,7 @@ export const getTournamentPairings = query({
     search: v.optional(v.string()),
     paginationOpts: paginationOptsValidator,
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
       token: args.token,
     });
@@ -466,6 +467,7 @@ export const getTournamentPairings = query({
 
         return {
           ...round,
+          motion: visibleMotion(round, sessionResult.user?.role ?? "student"),
           debates: filteredDebates,
           pagination: {
             isDone: paginatedDebates.isDone,

@@ -2,6 +2,7 @@ import { mutation, query } from "../../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { Doc, Id } from "../../_generated/dataModel";
+import { visibleMotion } from "../../lib/motion_release";
 import { paginationOptsValidator } from "convex/server";
 import { resolvePanel } from "../../lib/ballot_results";
 import { scoreBallot, speakerScoreValidator } from "../../lib/ballot_validation";
@@ -88,7 +89,7 @@ export const getJudgeAssignedDebates = query({
 
         return {
           ...debate,
-          round,
+          round: round ? { ...round, motion: visibleMotion(round, "volunteer") } : null,
           proposition_team: propTeam,
           opposition_team: oppTeam,
           my_submission: judgeSubmission,
