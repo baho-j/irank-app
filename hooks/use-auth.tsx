@@ -10,7 +10,7 @@ import { toast } from "sonner"
 type UserRole = "student" | "school_admin" | "volunteer" | "admin"
 
 type User = {
-  id: string
+  id: Id<"users">
   name: string
   email: string
   phone?: string
@@ -257,6 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (currentUser) {
         setUser({
           ...currentUser,
+          id: currentUser.id as Id<"users">,
           role: currentUser.role as UserRole,
         })
         localStorage.setItem(USER_KEY, JSON.stringify(currentUser))

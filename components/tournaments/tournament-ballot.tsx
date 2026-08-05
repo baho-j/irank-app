@@ -61,16 +61,28 @@ import { useGemini } from "@/hooks/use-gemini";
 import { speechTotal, rangesFor, validateSpeechScore, validateOutcome, type SpeechScore } from "@/lib/scoring/wsdc";
 import { EMPTY_SCORE, MIN_RFD_LENGTH } from "@/components/tournaments/ballot/types";
 import { isSupportedFormat } from "@/lib/tournament-formats";
+import type {
+  ArgumentFlowEntry,
+  BallotRecord,
+  BallotTournament,
+  EnrichedDebate,
+  FactCheckEntry,
+  PositionsBySpeaker,
+  SharedNoteEntry,
+  UserRole,
+} from "@/components/tournaments/ballot/ballot-types";
+import type { BallotSubmission } from "@/components/tournaments/ballot/submission";
+import type { SpeakerPosition } from "@/components/tournaments/ballot/types";
 import { useOffline } from "@/hooks/use-offline";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/use-debounce";
 
 interface TournamentBallotsProps {
-  tournament: any;
-  userRole: "admin" | "school_admin" | "volunteer" | "student";
+  tournament: BallotTournament;
+  userRole: UserRole;
   token: string;
-  userId?: string;
-  schoolId?: string;
+  userId?: Id<"users">;
+  schoolId?: Id<"schools">;
 }
 
 const SCORING_CATEGORIES = [
@@ -155,7 +167,15 @@ function getDebateStatusIcon(status: string) {
 }
 
 
-function DebateTimer({ debate, token, onUpdateDebate, compact = false }: any) {
+interface DebateTimerProps {
+  debate: EnrichedDebate;
+  token: string;
+  onUpdateDebate?: (debate: EnrichedDebate) => void;
+  onTimeUpdate?: (seconds: number) => void;
+  compact?: boolean;
+}
+
+function DebateTimer({ debate, token, onUpdateDebate, compact = false }: DebateTimerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -453,7 +473,13 @@ function DebateTimer({ debate, token, onUpdateDebate, compact = false }: any) {
   );
 }
 
-function ArgumentFlow({ debate, onAddArgument, onUpdateArgumentFlow }: any) {
+interface ArgumentFlowProps {
+  debate: EnrichedDebate;
+  onAddArgument: (argument: ArgumentFlowEntry) => void;
+  onUpdateArgumentFlow: (flow: ArgumentFlowEntry[]) => void;
+}
+
+function ArgumentFlow({ debate, onAddArgument, onUpdateArgumentFlow }: ArgumentFlowProps) {
   const [newArgument, setNewArgument] = useState("");
   const [argumentType, setArgumentType] = useState<"main" | "rebuttal" | "poi">("main");
   const [argumentStrength, setArgumentStrength] = useState(3);
@@ -468,12 +494,16 @@ function ArgumentFlow({ debate, onAddArgument, onUpdateArgumentFlow }: any) {
     const newArg = {
       type: argumentType,
       content: newArgument,
-      speaker: debate.current_speaker,
-      team: argumentType === "poi" ? debate.opposition_team_id : debate.proposition_team_id,
+      speaker: debate.current_speaker as Id<"users">,
+      team: (argumentType === "poi"
+        ? debate.opposition_team_id
+        : debate.proposition_team_id) as Id<"teams">,
       timestamp: Date.now(),
       strength: argumentStrength,
       rebutted_by: [],
     };
+
+    if (!newArg.team) return;
 
     onAddArgument(newArg);
     setNewArgument("");
@@ -666,7 +696,13 @@ function ArgumentFlow({ debate, onAddArgument, onUpdateArgumentFlow }: any) {
   );
 }
 
-function FactCheckingInterface({ debate, onAddFactCheck, userId }: any) {
+interface FactCheckingInterfaceProps {
+  debate: EnrichedDebate;
+  onAddFactCheck: (factCheck: FactCheckEntry) => void;
+  userId: Id<"users">;
+}
+
+function FactCheckingInterface({ debate, onAddFactCheck, userId }: FactCheckingInterfaceProps) {
   const { factCheckClaim, isFactChecking } = useGemini();
   const [selectedText, setSelectedText] = useState("");
   const [factCheckResult, setFactCheckResult] = useState<any>(null);
@@ -894,7 +930,14 @@ function FactCheckingInterface({ debate, onAddFactCheck, userId }: any) {
   );
 }
 
-function CollaborativeNotes({ debate, userId, onUpdateNotes, token }: any) {
+interface CollaborativeNotesProps {
+  debate: EnrichedDebate;
+  userId: Id<"users">;
+  onUpdateNotes: (note: SharedNoteEntry) => void;
+  token: string;
+}
+
+function CollaborativeNotes({ debate, userId, onUpdateNotes, token }: CollaborativeNotesProps) {
   const [notes, setNotes] = useState("");
   const [visibility, setVisibility] = useState<"private" | "judges" | "all">("judges");
   const userNames = useNames(token, [userId]);
@@ -990,28 +1033,45 @@ function CollaborativeNotes({ debate, userId, onUpdateNotes, token }: any) {
   );
 }
 
-function SpeakerPositionManager({ speakers, positions, onUpdatePositions, tournament, debate, teamId, teamName }: any) {
-  const [speakerPositions, setSpeakerPositions] = useState<Record<string, string>>(positions || {});
+interface SpeakerPositionManagerProps {
+  speakers: Array<{ id: string; name: string }>;
+  positions: PositionsBySpeaker;
+  onUpdatePositions: (positions: PositionsBySpeaker) => void;
+  tournament: BallotTournament;
+  debate: EnrichedDebate;
+  teamId: string;
+  teamName: string;
+}
+
+function SpeakerPositionManager({ speakers, positions, onUpdatePositions, tournament, debate, teamId, teamName }: SpeakerPositionManagerProps) {
+  const [speakerPositions, setSpeakerPositions] = useState<PositionsBySpeaker>(positions || {});
 
   const availablePositions = useMemo(() => {
 
-    const speakerCount = speakers.length;
+    const wsdcPositions: Array<{ id: SpeakerPosition; label: string }> = [
+      { id: "first", label: "1st Speaker" },
+      { id: "second", label: "2nd Speaker" },
+      { id: "third", label: "3rd Speaker" },
+      { id: "reply", label: "Reply Speaker" },
+    ];
 
-    return Array.from({ length: speakerCount }, (_, i) => ({
-      id: `speaker_${i + 1}`,
-      label: `Speaker ${i + 1}`,
-    }));
-  }, [speakers.length]);
+    return wsdcPositions.slice(0, Math.max(speakers.length, tournament?.team_size ?? 3));
+  }, [speakers.length, tournament?.team_size]);
 
-  const handlePositionChange = (speakerId: string, newPosition: string) => {
-    const newPositions = { ...speakerPositions };
+  const handlePositionChange = (speakerId: string, newPosition: SpeakerPosition) => {
+    const newPositions: PositionsBySpeaker = { ...speakerPositions };
 
     const currentSpeakerWithPosition = Object.keys(newPositions).find(
-      id => newPositions[id] === newPosition && speakers.some((s: any) => s.id === id)
+      id => newPositions[id] === newPosition && speakers.some((s) => s.id === id)
     );
 
     if (currentSpeakerWithPosition) {
-      newPositions[currentSpeakerWithPosition] = speakerPositions[speakerId] || "";
+      const displaced = speakerPositions[speakerId];
+      if (displaced) {
+        newPositions[currentSpeakerWithPosition] = displaced;
+      } else {
+        delete newPositions[currentSpeakerWithPosition];
+      }
     }
 
     newPositions[speakerId] = newPosition;
@@ -1036,7 +1096,7 @@ function SpeakerPositionManager({ speakers, positions, onUpdatePositions, tourna
 
               <Select
                 value={speakerPositions[speaker.id] || ""}
-                onValueChange={(value) => handlePositionChange(speaker.id, value)}
+                onValueChange={(value) => handlePositionChange(speaker.id, value as SpeakerPosition)}
               >
                 <SelectTrigger className="w-28">
                   <SelectValue placeholder="Position" />
@@ -1064,7 +1124,17 @@ export function useNames(token: string, userIds: string[]) {
   }), "speaker names");
 }
 
-function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, token, userRole }: any) {
+interface JudgingInterfaceProps {
+  debate: EnrichedDebate;
+  ballot: BallotRecord | null;
+  userId: Id<"users">;
+  onSubmitBallot: (payload: BallotSubmission) => Promise<void>;
+  tournament: BallotTournament;
+  token: string;
+  userRole: UserRole;
+}
+
+function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, token, userRole }: JudgingInterfaceProps) {
   const { validateFeedback, checkBias, isValidating, isBiasChecking } = useGemini();
   const [scores, setScores] = useState<Record<string, SpeechScore>>({});
   const [teamWinner, setTeamWinner] = useState<string>("");
@@ -1074,7 +1144,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   const [correctionReason, setCorrectionReason] = useState("");
   const [speakerComments, setSpeakerComments] = useState<Record<string, string>>({});
   const [teamComments, setTeamComments] = useState<Record<string, string>>({});
-  const [speakerPositions, setSpeakerPositions] = useState<Record<string, string>>({});
+  const [speakerPositions, setSpeakerPositions] = useState<PositionsBySpeaker>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
   const [biasCheckResults, setBiasCheckResults] = useState<Record<string, any>>({});
@@ -1088,7 +1158,10 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
   useEffect(() => {
     if (userRole === "admin" && debate.judges?.length > 0 && !selectedJudgeId) {
-      setSelectedJudgeId(debate.judges[0]._id || debate.judges[0]);
+      const firstJudge = debate.judges[0];
+      setSelectedJudgeId(
+        typeof firstJudge === "string" ? firstJudge : firstJudge._id as Id<"users">
+      );
     }
   }, [userRole, debate.judges, selectedJudgeId]);
 
@@ -1229,7 +1302,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
     const totals = new Map<string, number>();
     scored.forEach(([speakerId, score]) => {
-      const teamId = debate.proposition_team?.members?.includes(speakerId)
+      const teamId = debate.proposition_team?.members?.includes(speakerId as Id<"users">)
         ? debate.proposition_team._id
         : debate.opposition_team?._id;
       const speechType = (speakerPositions[speakerId] ?? "first") === "reply"
@@ -1335,11 +1408,17 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
         const position = speakerPositions[speakerId] ?? "first";
         const biasResult = biasCheckResults[speakerId];
 
+        const teamId = debate.proposition_team?.members.includes(speakerId as Id<"users">)
+          ? debate.proposition_team._id
+          : debate.opposition_team?._id;
+
+        if (!teamId) {
+          throw new Error("Could not determine which team this speaker belongs to.");
+        }
+
         return {
           speaker_id: speakerId as Id<"users">,
-          team_id: debate.proposition_team?.members.includes(speakerId)
-            ? debate.proposition_team._id
-            : debate.opposition_team._id,
+          team_id: teamId,
           position,
           speech_type: position === "reply" ? ("reply" as const) : ("substantive" as const),
           style: speechScore.style,
@@ -1781,7 +1860,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     !!submissionBlockedReason ||
                     isValidating ||
                     availableTeams.length === 0 ||
-                    (userRole === "volunteer" && ballot?.submission_state === "submitted") ||
+                    (userRole === "volunteer" && !canEdit) ||
                     (userRole === "admin" && !selectedJudgeId)
                   }
                   className="w-full"
@@ -2220,7 +2299,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                   !!submissionBlockedReason ||
                   isValidating ||
                   availableTeams.length === 0 ||
-                  (userRole === "volunteer" && ballot?.submission_state === "submitted") ||
+                  (userRole === "volunteer" && !canEdit) ||
                   (userRole === "admin" && !selectedJudgeId)
                 }
                 className="w-full"
@@ -2258,7 +2337,17 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   );
 }
 
-function BallotRow({ debate, userRole, userId, onViewDetails, onEditBallot, onFlagBallot, onUnflagBallot }: any) {
+interface BallotListItemProps {
+  debate: EnrichedDebate;
+  userRole: UserRole;
+  userId?: Id<"users">;
+  onViewDetails: (debate: EnrichedDebate) => void;
+  onEditBallot: (debate: EnrichedDebate) => void;
+  onFlagBallot: (debate: EnrichedDebate) => void;
+  onUnflagBallot: (debate: EnrichedDebate) => void;
+}
+
+function BallotRow({ debate, userRole, userId, onViewDetails, onEditBallot, onFlagBallot, onUnflagBallot }: BallotListItemProps) {
   const StatusIcon = getDebateStatusIcon(debate.status);
   const canEdit = userRole === "admin" || (userRole === "volunteer" && debate.judges?.some((j: any) => j._id === userId));
   const canSeeDetails = debate.can_see_full_details || userRole === "admin" || userRole === "volunteer";
@@ -2429,7 +2518,7 @@ function BallotRow({ debate, userRole, userId, onViewDetails, onEditBallot, onFl
   );
 }
 
-function BallotCard({ debate, userRole, userId, onViewDetails, onEditBallot, onFlagBallot, onUnflagBallot }: any) {
+function BallotCard({ debate, userRole, userId, onViewDetails, onEditBallot, onFlagBallot, onUnflagBallot }: BallotListItemProps) {
   const StatusIcon = getDebateStatusIcon(debate.status);
   const canEdit = userRole === "admin" || (userRole === "volunteer" && debate.judges?.some((j: any) => j._id === userId));
   const canSeeDetails = debate.can_see_full_details || userRole === "admin" || userRole === "volunteer";
@@ -2626,19 +2715,19 @@ function BallotCard({ debate, userRole, userId, onViewDetails, onEditBallot, onF
         )}
 
 
-        {(debate.fact_checks?.length > 0 || debate.argument_flow?.length > 0) && canSeeDetails && (
+        {((debate.fact_checks?.length ?? 0) > 0 || (debate.argument_flow?.length ?? 0) > 0) && canSeeDetails && (
           <div className="pt-2 border-t">
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              {debate.fact_checks?.length > 0 && (
+              {(debate.fact_checks?.length ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
                   <Search className="h-3 w-3" />
-                  {debate.fact_checks.length} fact checks
+                  {(debate.fact_checks?.length ?? 0)} fact checks
                 </span>
               )}
-              {debate.argument_flow?.length > 0 && (
+              {(debate.argument_flow?.length ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
                   <BarChart3 className="h-3 w-3" />
-                  {debate.argument_flow.length} arguments
+                  {(debate.argument_flow?.length ?? 0)} arguments
                 </span>
               )}
             </div>
@@ -2649,7 +2738,15 @@ function BallotCard({ debate, userRole, userId, onViewDetails, onEditBallot, onF
   );
 }
 
-function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
+interface BallotDetailsDialogProps {
+  debate: EnrichedDebate | null;
+  isOpen: boolean;
+  onClose: () => void;
+  token: string;
+  userRole?: UserRole;
+}
+
+function BallotDetailsDialog({ debate, isOpen, onClose, token }: BallotDetailsDialogProps) {
   const [selectedJudge, setSelectedJudge] = useState<string>("all");
   const [expandedJudge, setExpandedJudge] = useState<string | null>(null);
   const [expandedSpeaker, setExpandedSpeaker] = useState<string | null>(null);
@@ -2696,8 +2793,12 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
   };
 
   const getJudgeName = (judgeId: string) => {
-    const judge = debate?.judges?.find((j: any) => (j._id || j) === judgeId);
-    if (judge?.name) return judge.name;
+    const judge = debate?.judges?.find(
+      (j) => (typeof j === "string" ? j : j._id) === judgeId
+    );
+
+    if (judge && typeof judge !== "string" && judge.name) return judge.name;
+
     return getUserName(judgeId);
   };
 
@@ -2712,11 +2813,12 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
         judge_id: judgeBallot.judge_id,
         judge_name: getJudgeName(judgeBallot.judge_id),
         is_head_judge: debate.head_judge_id === judgeBallot.judge_id,
-        is_flagged: judgeBallot.ballot.notes?.includes("[FLAG:") ||
-          judgeBallot.ballot.notes?.includes("[JUDGE FLAG:") || false,
+        is_flagged: judgeBallot.ballot.flagged ?? false,
       };
     }).filter(Boolean);
   }, [debate, userNamesQuery]);
+
+  if (!debate) return null;
 
   const filteredBallots = selectedJudge === "all"
     ? ballotDetails
@@ -2835,17 +2937,17 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
             </div>
 
             
-            {debate?.fact_checks?.length > 0 && (
+            {(debate?.fact_checks?.length ?? 0) > 0 && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base md:text-lg flex items-center gap-2">
                     <Search className="h-4 w-4 md:h-5 md:w-5" />
-                    Fact Checks ({debate.fact_checks.length})
+                    Fact Checks ({(debate.fact_checks?.length ?? 0)})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {debate.fact_checks.map((check: any, idx: number) => (
+                    {(debate.fact_checks ?? []).map((check: any, idx: number) => (
                       <div key={idx} className={`p-3 rounded border ${
                         check.result === 'true' ? 'bg-green-50 border-green-200' :
                           check.result === 'false' ? 'bg-red-50 border-red-200' :
@@ -2882,17 +2984,17 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
             )}
 
             
-            {debate?.argument_flow?.length > 0 && (
+            {(debate?.argument_flow?.length ?? 0) > 0 && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base md:text-lg flex items-center gap-2">
                     <BarChart3 className="h-4 w-4 md:h-5 md:w-5" />
-                    Argument Flow ({debate.argument_flow.length})
+                    Argument Flow ({(debate.argument_flow?.length ?? 0)})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {debate.argument_flow.map((arg: any, idx: number) => (
+                    {(debate.argument_flow ?? []).map((arg: any, idx: number) => (
                       <div key={idx} className={`p-3 rounded border ${
                         arg.type === 'main' ? 'bg-blue-50 border-blue-200' :
                           arg.type === 'rebuttal' ? 'bg-red-50 border-red-200' :
@@ -3258,17 +3360,17 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
             )}
 
             
-            {debate?.shared_notes?.length > 0 && (
+            {(debate?.shared_notes?.length ?? 0) > 0 && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base md:text-lg flex items-center gap-2">
                     <MessageSquare className="h-4 w-4 md:h-5 md:w-5" />
-                    Shared Notes ({debate.shared_notes.length})
+                    Shared Notes ({debate.shared_notes?.length ?? 0})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {debate.shared_notes.map((note: any, idx: number) => (
+                    {(debate.shared_notes ?? []).map((note: any, idx: number) => (
                       <div key={idx} className="p-3 bg-muted rounded-lg">
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
                           <span className="font-medium text-sm">{getUserName(note.author)}</span>
@@ -3296,7 +3398,15 @@ function BallotDetailsDialog({ debate, isOpen, onClose, token }: any) {
 }
 
 
-function FlagBallotDialog({ debate, isOpen, onClose, onFlag, userRole }: any) {
+interface FlagBallotDialogProps {
+  debate: EnrichedDebate | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onFlag: (debate: EnrichedDebate, reason: string, ballotIds: string[]) => Promise<void>;
+  userRole: UserRole;
+}
+
+function FlagBallotDialog({ debate, isOpen, onClose, onFlag, userRole }: FlagBallotDialogProps) {
   const [reason, setReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBallots, setSelectedBallots] = useState<string[]>([]);
@@ -3308,9 +3418,9 @@ function FlagBallotDialog({ debate, isOpen, onClose, onFlag, userRole }: any) {
         ?.filter((jb: any) => jb.ballot?.submission_state === "submitted")
         ?.map((jb: any) => ({
           id: jb.ballot._id,
-          judgeName: jb.judge_name || debate.judges?.find((j: any) => j._id === jb.judge_id)?.name || `Judge ${jb.judge_id.slice(-4)}`,
+          judgeName: jb.judge_name || `Judge ${jb.judge_id.slice(-4)}`,
           isHeadJudge: debate.head_judge_id === jb.judge_id,
-          isAlreadyFlagged: jb.ballot.notes?.includes("[FLAG:") || jb.ballot.notes?.includes("[JUDGE FLAG:"),
+          isAlreadyFlagged: jb.ballot.flagged ?? false,
           ballot: jb.ballot
         })) || [];
     } else {
@@ -3360,6 +3470,7 @@ function FlagBallotDialog({ debate, isOpen, onClose, onFlag, userRole }: any) {
 
     setIsSubmitting(true);
     try {
+      if (!debate) return;
       await onFlag(debate, reason, selectedBallots);
       setReason("");
       setSelectedBallots([]);
@@ -3991,7 +4102,7 @@ export default function TournamentBallots({
         </div>
       </Card>
 
-      {showJudgingInterface && judgingDebate && (
+      {showJudgingInterface && judgingDebate && userId && (
         <>
           {window.innerWidth < 768 ? (
             <Drawer open={showJudgingInterface} onOpenChange={setShowJudgingInterface}>
