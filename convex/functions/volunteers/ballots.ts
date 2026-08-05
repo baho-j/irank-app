@@ -301,6 +301,7 @@ export const submitBallot = mutation({
 
     const ballotData = {
       debate_id: args.debate_id,
+      tournament_id: debate.tournament_id,
       judge_id: judgeId,
       winning_team_id: args.winning_team_id,
       winning_position: args.winning_position,

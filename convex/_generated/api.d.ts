@@ -32,6 +32,7 @@ import type * as functions_notification_emails from "../functions/notification_e
 import type * as functions_notification_recipients from "../functions/notification_recipients.js";
 import type * as functions_notifications from "../functions/notifications.js";
 import type * as functions_pairings from "../functions/pairings.js";
+import type * as functions_ranking_snapshots from "../functions/ranking_snapshots.js";
 import type * as functions_rankings from "../functions/rankings.js";
 import type * as functions_school_analytics from "../functions/school/analytics.js";
 import type * as functions_school_dashboard from "../functions/school/dashboard.js";
@@ -87,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   "functions/notification_recipients": typeof functions_notification_recipients;
   "functions/notifications": typeof functions_notifications;
   "functions/pairings": typeof functions_pairings;
+  "functions/ranking_snapshots": typeof functions_ranking_snapshots;
   "functions/rankings": typeof functions_rankings;
   "functions/school/analytics": typeof functions_school_analytics;
   "functions/school/dashboard": typeof functions_school_dashboard;

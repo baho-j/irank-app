@@ -462,6 +462,7 @@ export default defineSchema({
 
   judging_scores: defineTable({
     debate_id: v.id("debates"),
+    tournament_id: v.optional(v.id("tournaments")),
     judge_id: v.id("users"),
     winning_team_id: v.optional(v.id("teams")),
     winning_position: v.optional(v.union(
@@ -520,6 +521,8 @@ export default defineSchema({
     .index("by_debate_id_judge_id", ["debate_id", "judge_id"])
     .index("by_submitted_at", ["submitted_at"])
     .index("by_debate_id_submission_state", ["debate_id", "submission_state"])
+    .index("by_tournament_id", ["tournament_id"])
+    .index("by_tournament_id_submission_state", ["tournament_id", "submission_state"])
     .index("by_flagged", ["flagged"]),
 
   judge_results: defineTable({
@@ -756,6 +759,19 @@ export default defineSchema({
     .index("by_school_id", ["school_id"])
     .index("by_tier", ["tier"])
     .index("by_rank", ["rank"]),
+
+  ranking_snapshots: defineTable({
+    scope: v.union(v.literal("student"), v.literal("school"), v.literal("volunteer")),
+    entity_id: v.string(),
+    rank: v.number(),
+    previous_rank: v.optional(v.number()),
+    total_points: v.number(),
+    average_points: v.number(),
+    tournaments_count: v.number(),
+    computed_at: v.number(),
+  })
+    .index("by_scope_rank", ["scope", "rank"])
+    .index("by_scope_entity", ["scope", "entity_id"]),
 
   payments: defineTable({
     tournament_id: v.id("tournaments"),

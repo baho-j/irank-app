@@ -15,6 +15,12 @@ crons.interval(
   internal.functions.notifications.cleanupExpiredNotifications,
 );
 
+crons.daily(
+  "rebuild ranking snapshots",
+  { hourUTC: 3, minuteUTC: 0 },
+  internal.functions.ranking_snapshots.rebuildSnapshots,
+);
+
 // Tiers are relative, so one school's result can move another's band. They are
 // recomputed for the whole league rather than per school.
 crons.daily(
