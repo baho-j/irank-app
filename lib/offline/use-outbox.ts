@@ -20,13 +20,25 @@ export function useOutbox(dispatch?: SyncDispatch) {
     setQueueCount(await outboxCount());
   }, []);
 
+  // The queue lives in IndexedDB, which has no change notification, so its
+  // depth is polled. Reads after unmount are dropped rather than applied.
   useEffect(() => {
-    void refresh();
+    let active = true;
 
-    const interval = window.setInterval(refresh, POLL_MS);
+    const read = async () => {
+      const next = await outboxCount();
+      if (active) setQueueCount(next);
+    };
 
-    return () => window.clearInterval(interval);
-  }, [refresh]);
+    void read();
+
+    const interval = window.setInterval(read, POLL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const sync = useCallback(async () => {
     if (!dispatch || isSyncing) return;

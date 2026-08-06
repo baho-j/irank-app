@@ -44,12 +44,12 @@ export function useCachedQuery<T>(
     };
   }, [key]);
 
+  // Writing to the cache is an external effect; the freshness the caller sees
+  // comes from whether a live result arrived, not from stored state.
   useEffect(() => {
     if (liveResult === undefined) return;
 
     void writeCache(key, liveResult);
-    setCachedAt(Date.now());
-    setIsStale(false);
   }, [key, liveResult]);
 
   if (liveResult !== undefined) {

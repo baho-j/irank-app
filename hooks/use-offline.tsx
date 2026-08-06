@@ -3,6 +3,7 @@
 import { useConvexOfflineDetector } from "@/lib/pwa/offline-detector";
 import { useEffect, useState, useRef } from "react";
 import { useOutbox } from "@/lib/offline/use-outbox";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 interface CacheItem<T = any> {
   data: T;
@@ -233,19 +234,16 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
   const { isOffline } = useConvexOfflineDetector();
   const [cachedData, setCachedData] = useState<T | null>(null);
   const [isFromCache, setIsFromCache] = useState<boolean>(false);
-  const [mounted, setMounted] = useState<boolean>(false);
   const manager = useRef<SimpleOfflineManager>(SimpleOfflineManager.getInstance());
-  const generatedKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // IndexedDB is only reachable on the device, so caching waits for hydration.
+  const hydrated = useHydrated();
 
   const finalCacheKey: string | null = cacheKey ?? null;
 
   useEffect(() => {
 
-    if (!mounted || !finalCacheKey || typeof window === 'undefined') {
+    if (!hydrated || !finalCacheKey || typeof window === 'undefined') {
       return;
     }
 
@@ -287,7 +285,7 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
         setIsFromCache(false);
       }
     }
-  }, [hookResult, isOffline, finalCacheKey, mounted]);
+  }, [hookResult, isOffline, finalCacheKey, hydrated]);
 
   if (isQueryResult(hookResult)) {
     if (isOffline && isFromCache && cachedData !== null) {
