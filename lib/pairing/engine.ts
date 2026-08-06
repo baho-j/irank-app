@@ -68,44 +68,92 @@ interface Match {
 }
 
 /**
- * Pairs down the standings, taking the cheapest available partner for each
- * team in turn and looking ahead far enough to avoid stranding anyone.
+ * Pairs the field at the lowest total cost.
  *
- * A team is never skipped: if every remaining partner is costly, the least-bad
- * is taken and the compromise is reported. The previous implementation used
- * hard filters and silently omitted teams no partner satisfied.
+ * Taking each team's cheapest partner in turn is not enough: a choice that
+ * looks cheap at the top of the standings can strand two teams at the bottom
+ * who have already met, forcing a repeat the field as a whole did not require.
+ * So the greedy pass is only a starting point, and pairs are then swapped
+ * wherever a swap lowers the combined cost.
+ *
+ * A team is never skipped. If every partner is costly the least-bad is taken
+ * and the compromise is reported.
  */
 function matchTeams(
   teams: PairingTeam[],
   stage: RoundStage,
   presorted = false
 ): Match[] {
-  const remaining = presorted ? [...teams] : [...teams].sort(byStanding);
-  const matches: Match[] = [];
+  const ordered = presorted ? [...teams] : [...teams].sort(byStanding);
+  const remaining = [...ordered];
+  const pairs: Array<[PairingTeam, PairingTeam]> = [];
 
   while (remaining.length >= 2) {
     const team = remaining.shift()!;
 
     let bestIndex = 0;
     let bestCost = Number.POSITIVE_INFINITY;
-    let bestReasons: string[] = [];
 
     remaining.forEach((candidate, index) => {
-      const { total, reasons } = pairingCost(team, candidate, stage);
+      const { total } = pairingCost(team, candidate, stage);
 
       if (total < bestCost) {
         bestCost = total;
         bestIndex = index;
-        bestReasons = reasons;
       }
     });
 
-    const partner = remaining.splice(bestIndex, 1)[0];
-
-    matches.push({ a: team, b: partner, cost: bestCost, reasons: bestReasons });
+    pairs.push([team, remaining.splice(bestIndex, 1)[0]]);
   }
 
-  return matches;
+  improve(pairs, stage);
+
+  return pairs.map(([a, b]) => {
+    const { total, reasons } = pairingCost(a, b, stage);
+
+    return { a, b, cost: total, reasons };
+  });
+}
+
+/** The cost of a pairing, taken as the worse of the two directions. */
+function costOf(a: PairingTeam, b: PairingTeam, stage: RoundStage): number {
+  return Math.max(pairingCost(a, b, stage).total, pairingCost(b, a, stage).total);
+}
+
+/**
+ * Repeatedly swaps partners between two pairs whenever doing so lowers their
+ * combined cost, until no swap helps. Pairs are visited in a fixed order and
+ * only a strict improvement is accepted, so the result stays deterministic.
+ */
+function improve(pairs: Array<[PairingTeam, PairingTeam]>, stage: RoundStage): void {
+  const maxPasses = 20;
+
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    let improved = false;
+
+    for (let i = 0; i < pairs.length; i += 1) {
+      for (let j = i + 1; j < pairs.length; j += 1) {
+        const [a1, a2] = pairs[i];
+        const [b1, b2] = pairs[j];
+
+        const current = costOf(a1, a2, stage) + costOf(b1, b2, stage);
+        const swapFirst = costOf(a1, b1, stage) + costOf(a2, b2, stage);
+        const swapSecond = costOf(a1, b2, stage) + costOf(a2, b1, stage);
+
+        if (swapFirst < current && swapFirst <= swapSecond) {
+          pairs[i] = [a1, b1];
+          pairs[j] = [a2, b2];
+          improved = true;
+        } else if (swapSecond < current) {
+          pairs[i] = [a1, b2];
+          pairs[j] = [a2, b1];
+          improved = true;
+        }
+      }
+    }
+
+    if (!improved) return;
+  }
 }
 
 function rankJudges(judges: PairingJudge[]): PairingJudge[] {
@@ -214,6 +262,15 @@ export function generatePairings(input: PairingInput): PairingResult {
     input.judges,
     input.judges_per_debate
   );
+
+  // Rooms run at the same time, so a judge cannot cover more than one of them.
+  const judgesNeeded = sided.length * input.judges_per_debate;
+
+  if (input.judges.length < judgesNeeded) {
+    warnings.push(
+      `${input.judges.length} judges available for ${sided.length} rooms needing ${judgesNeeded}. Some judges are assigned to rooms running at the same time.`
+    );
+  }
 
   const debates: PairedDebate[] = sided.map((entry, index) => {
     const panel = panels[index];

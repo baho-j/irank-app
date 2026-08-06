@@ -72,17 +72,22 @@ export function pairingCost(
   const balanceA = sideBalance(a);
   const balanceB = sideBalance(b);
 
-  // Pairing them is only useful if one can take proposition and the other
-  // opposition without worsening both records.
-  const bestImbalance = Math.min(
+  // One takes proposition and the other opposition, so score the pairing by
+  // the imbalance the better of those two assignments leaves behind. Teams
+  // already leaning opposite ways cancel out; teams leaning the same way
+  // cannot both be corrected, and the cost says so.
+  const resultingImbalance = Math.min(
     Math.abs(balanceA + 1) + Math.abs(balanceB - 1),
     Math.abs(balanceA - 1) + Math.abs(balanceB + 1)
   );
 
-  if (bestImbalance > 1) {
-    total += (bestImbalance - 1) * PENALTIES.side_imbalance;
-    reasons.push("side imbalance");
-  }
+  // Two evenly balanced teams unavoidably leave one on each side, so that
+  // much is the floor rather than a compromise worth reporting.
+  const unavoidable = 2;
+
+  total += resultingImbalance * PENALTIES.side_imbalance;
+
+  if (resultingImbalance > unavoidable) reasons.push("side imbalance");
 
   const bracketGap =
     Math.abs(a.wins - b.wins) * 10 + Math.abs(a.total_points - b.total_points) / 100;
@@ -94,7 +99,11 @@ export function pairingCost(
 
 /**
  * Which team takes proposition, chosen to even out both teams' side records.
- * Ties break on team id so the same inputs always give the same sides.
+ *
+ * When both are equally balanced the team that spoke opposition most recently
+ * takes proposition, so a team does not sit on one side for the whole
+ * tournament. Two teams level on that tiebreak fall back to team id, which
+ * keeps the same inputs producing the same sides.
  */
 export function assignSides(
   a: PairingTeam,
@@ -103,8 +112,20 @@ export function assignSides(
   const balanceA = sideBalance(a);
   const balanceB = sideBalance(b);
 
-  if (balanceA < balanceB) return { proposition: a, opposition: b };
-  if (balanceB < balanceA) return { proposition: b, opposition: a };
+  if (balanceA !== balanceB) {
+    return balanceA < balanceB
+      ? { proposition: a, opposition: b }
+      : { proposition: b, opposition: a };
+  }
+
+  const lastA = a.side_history.at(-1);
+  const lastB = b.side_history.at(-1);
+
+  if (lastA !== lastB) {
+    return lastA === "opposition"
+      ? { proposition: a, opposition: b }
+      : { proposition: b, opposition: a };
+  }
 
   return a.team_id < b.team_id
     ? { proposition: a, opposition: b }
