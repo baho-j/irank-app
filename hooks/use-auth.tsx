@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { toast } from "sonner"
+import { useHydrated } from "@/hooks/use-hydrated";
+import { useSyncExternalStore } from "react";
 
 type UserRole = "student" | "school_admin" | "volunteer" | "admin"
 
@@ -158,10 +160,45 @@ function getErrorMessage(error: string): string {
   return "Something went wrong. Please try again or contact support if the problem persists.";
 }
 
+function subscribeToConnectivity(onChange: () => void) {
+  window.addEventListener("online", onChange)
+  window.addEventListener("offline", onChange)
+
+  return () => {
+    window.removeEventListener("online", onChange)
+    window.removeEventListener("offline", onChange)
+  }
+}
+
+function readStoredSession(): { token: string | null; user: User | null } {
+  if (typeof window === "undefined") return { token: null, user: null }
+
+  const token = localStorage.getItem(TOKEN_KEY)
+  const rawUser = localStorage.getItem(USER_KEY)
+
+  if (!token || !rawUser) return { token: null, user: null }
+
+  try {
+    return { token, user: JSON.parse(rawUser) as User }
+  } catch {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+    return { token: null, user: null }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null)
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // Read on the first render rather than in an effect: an effect leaves one
+  // paint showing a signed-out app to someone who is signed in.
+  const [stored] = useState(() => readStoredSession())
+
+  const [token, setToken] = useState<string | null>(stored.token)
+  const [user, setUser] = useState<User | null>(stored.user)
+  const [isLoading, setIsLoading] = useState(false)
+
+  // The server cannot read the device's session, so callers must not act on
+  // "not signed in" until the client has hydrated and the real answer is known.
+  const hydrated = useHydrated()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -196,22 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [pathname, user, router]);
 
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    const storedUser = localStorage.getItem(USER_KEY)
 
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken)
-        setUser(JSON.parse(storedUser))
-      } catch (error) {
-        console.error("Error parsing stored user data:", error)
-        localStorage.removeItem(TOKEN_KEY)
-        localStorage.removeItem(USER_KEY)
-      }
-    }
-    setIsLoading(false)
-  }, [])
 
   const getDeviceInfo = () => ({
     user_agent: navigator.userAgent,
@@ -575,7 +597,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     token,
     isAuthenticated: !!token && !!user,
-    isLoading,
+    isLoading: isLoading || !hydrated,
     clearAuth,
     signUp,
     signIn,
@@ -661,36 +683,32 @@ export function useRoleAccess() {
 }
 
 export function useOfflineSync() {
-  const [isOffline, setIsOffline] = useState(false)
-  const [isOfflineValid, setIsOfflineValid] = useState(false)
+  // Connectivity is browser state, so it is read from the browser rather than
+  // mirrored into React state by an effect.
+  const isOffline = useSyncExternalStore(
+    subscribeToConnectivity,
+    () => !navigator.onLine,
+    () => false
+  )
+
+  const isOfflineValid =
+    isOffline &&
+    typeof window !== "undefined" &&
+    !!localStorage.getItem(TOKEN_KEY) &&
+    !!localStorage.getItem(USER_KEY)
+
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle")
 
+  // A brief "syncing" flag when the connection returns.
   useEffect(() => {
     const handleOnline = () => {
-      setIsOffline(false)
       setSyncStatus("syncing")
       setTimeout(() => setSyncStatus("idle"), 2000)
     }
 
-    const handleOffline = () => {
-      setIsOffline(true)
-      const hasOfflineData = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(USER_KEY)
-      setIsOfflineValid(!!hasOfflineData)
-    }
-
-    setIsOffline(!navigator.onLine)
-    if (!navigator.onLine) {
-      const hasOfflineData = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(USER_KEY)
-      setIsOfflineValid(!!hasOfflineData)
-    }
-
     window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
 
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
+    return () => window.removeEventListener("online", handleOnline)
   }, [])
 
   return {

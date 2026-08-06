@@ -127,12 +127,15 @@ export const getMotionAudience = internalQuery({
       invitations.map((invitation) => ctx.db.get(invitation.target_id))
     );
 
+    const active = (users: Array<Doc<"users"> | null>) =>
+      users.filter((user): user is Doc<"users"> => !!user && user.status === "active");
+
     const toRecipients = (users: Array<Doc<"users"> | null>) =>
-      dedupe(
-        users
-          .filter((user): user is Doc<"users"> => !!user && user.status === "active")
-          .map((user) => ({ email: user.email, name: user.name }))
-      );
+      dedupe(active(users).map((user) => ({ email: user.email, name: user.name })));
+
+    // Ids as well as addresses, so the same people can be reached by push.
+    const toIds = (users: Array<Doc<"users"> | null>) =>
+      Array.from(new Set(active(users).map((user) => user._id)));
 
     return {
       tournament: { name: tournament.name, slug: tournament.slug },
@@ -145,6 +148,9 @@ export const getMotionAudience = internalQuery({
       judges: toRecipients(judges),
       students: toRecipients(students),
       volunteers: toRecipients(volunteers),
+      judge_ids: toIds(judges),
+      student_ids: toIds(students),
+      volunteer_ids: toIds(volunteers),
     };
   },
 });

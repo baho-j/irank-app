@@ -3,12 +3,25 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "./use-auth";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 export function useNotifications() {
   const { user, isAuthenticated, token, clearAuth } = useAuth();
   const router = useRouter();
-  const [isSupported, setIsSupported] = useState(false);
-  const [permission, setPermission] = useState<NotificationPermission>("default");
+  // Browser capabilities, so they are read on the device rather than assumed
+  // and then corrected. Hydration gates them, since the server has neither.
+  const hydrated = useHydrated();
+
+  const isSupported =
+    hydrated &&
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window;
+
+  const [grantedPermission, setPermission] = useState<NotificationPermission | null>(null);
+  const permission: NotificationPermission =
+    grantedPermission ?? (isSupported ? Notification.permission : "default");
 
   const getUserNotificationsMutation = useMutation(api.functions.notifications.getUserNotifications);
   const getUnreadCountMutation = useMutation(api.functions.notifications.getUnreadCount);
@@ -82,17 +95,7 @@ export function useNotifications() {
     }
   }, [isAuthenticated, user, token]);
 
-  useEffect(() => {
-    setIsSupported(
-      'Notification' in window &&
-      'serviceWorker' in navigator &&
-      'PushManager' in window
-    );
 
-    if ('Notification' in window) {
-      setPermission(Notification.permission);
-    }
-  }, []);
 
   const requestPermission = async (): Promise<boolean> => {
     if (!isSupported) {

@@ -14,6 +14,26 @@ Confirmed: no tables, functions, or routes for any of this exist.
 
 Covers **Club Competitions** (internal) and **SLDs** (inter-school, hosted).
 
+### Implementation note — use the Workflow component
+
+Build this on [`@convex-dev/workflow`](https://www.convex.dev/components/workflow),
+not on hand-rolled status fields and scheduled functions.
+
+The lifecycle is long-running (a school may sit in Draft for weeks), multi-step
+with real dependencies between steps, and has to survive restarts. It also needs
+reactive status so a coordinator can watch where a submission has reached, and
+the 48-hour report timer in Step 8 is a durable delay rather than a cron sweep.
+
+Doing it by hand means a status column plus a scatter of `runAfter` calls, which
+is how a workflow silently ends up in an impossible state — a grant released
+against a submission that was later rejected, or a report timer still ticking on
+a cancelled activity. The component journals each step, so a half-finished
+lifecycle resumes rather than being reconstructed by guesswork.
+
+This is **not** needed for anything in Phase 1: nothing in the tournament flow
+runs long enough to justify the durable journal. Workpool is the right tool
+there, and is already in use for notifications and ranking rebuilds.
+
 ### Step 1 — Draft
 Debate Patron enters type, date/time, venue, program(s) (Debate / Public Speaking / Money Makeover), expected students and teams, and for SLDs expected participating schools.
 

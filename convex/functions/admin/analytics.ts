@@ -1,6 +1,12 @@
 import { internalQuery, mutation, query } from "../../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
+import {
+  debatesByCreation,
+  schoolsByCreation,
+  tournamentsByCreation,
+  usersByCreation,
+} from "../../lib/aggregates";
 import { Id } from "../../_generated/dataModel";
 
 const dateRangeValidator = v.optional(v.object({
@@ -58,37 +64,48 @@ export const dashboardOverview = internalQuery({
       end: now,
     };
 
-    const allTournaments = await ctx.db.query("tournaments").collect();
-    const activeTournaments = allTournaments.filter(t =>
-      t.status === "published" || t.status === "inProgress"
-    );
-
-    const tournamentsInRange = allTournaments.filter(t =>
-      t.created_at >= dateRange.start && t.created_at <= dateRange.end
-    );
-
-    const allUsers = await ctx.db.query("users").collect();
-    const usersInRange = allUsers.filter(u =>
-      u.created_at >= dateRange.start && u.created_at <= dateRange.end
-    );
-
-    const allSchools = await ctx.db.query("schools").collect();
-    const schoolsInRange = allSchools.filter(s =>
-      s.created_at >= dateRange.start && s.created_at <= dateRange.end
-    );
-
-    const allDebates = await ctx.db.query("debates").collect();
-
     const previousPeriodStart = dateRange.start - (dateRange.end - dateRange.start);
-    const previousTournaments = allTournaments.filter(t =>
-      t.created_at >= previousPeriodStart && t.created_at < dateRange.start
-    );
-    const previousUsers = allUsers.filter(u =>
-      u.created_at >= previousPeriodStart && u.created_at < dateRange.start
-    );
-    const previousSchools = allSchools.filter(s =>
-      s.created_at >= previousPeriodStart && s.created_at < dateRange.start
-    );
+
+    // Counts come from the aggregates rather than from loading every row and
+    // filtering in JavaScript. Same numbers, in O(log n).
+    const within = (from: number, to: number) => ({
+      bounds: {
+        lower: { key: from, inclusive: true },
+        upper: { key: to, inclusive: true },
+      },
+    });
+
+    const [
+      totalTournaments,
+      totalUsers,
+      totalSchools,
+      totalDebates,
+      tournamentsInRange,
+      usersInRange,
+      schoolsInRange,
+      previousTournaments,
+      previousUsers,
+      previousSchools,
+    ] = await Promise.all([
+      tournamentsByCreation.count(ctx),
+      usersByCreation.count(ctx),
+      schoolsByCreation.count(ctx),
+      debatesByCreation.count(ctx),
+      tournamentsByCreation.count(ctx, within(dateRange.start, dateRange.end)),
+      usersByCreation.count(ctx, within(dateRange.start, dateRange.end)),
+      schoolsByCreation.count(ctx, within(dateRange.start, dateRange.end)),
+      tournamentsByCreation.count(ctx, within(previousPeriodStart, dateRange.start - 1)),
+      usersByCreation.count(ctx, within(previousPeriodStart, dateRange.start - 1)),
+      schoolsByCreation.count(ctx, within(previousPeriodStart, dateRange.start - 1)),
+    ]);
+
+    // Status is not the aggregate's sort key, so this one stays an indexed read.
+    const activeTournaments = (
+      await Promise.all([
+        ctx.db.query("tournaments").withIndex("by_status", (q) => q.eq("status", "published")).collect(),
+        ctx.db.query("tournaments").withIndex("by_status", (q) => q.eq("status", "inProgress")).collect(),
+      ])
+    ).flat();
 
     const calculateGrowth = (current: number, previous: number) => {
       if (previous === 0) return current > 0 ? 100 : 0;
@@ -96,15 +113,15 @@ export const dashboardOverview = internalQuery({
     };
 
     return {
-      total_tournaments: allTournaments.length,
+      total_tournaments: totalTournaments,
       active_tournaments: activeTournaments.length,
-      total_users: allUsers.length,
-      total_schools: allSchools.length,
-      total_debates: allDebates.length,
+      total_users: totalUsers,
+      total_schools: totalSchools,
+      total_debates: totalDebates,
       growth_metrics: {
-        tournaments: Math.round(calculateGrowth(tournamentsInRange.length, previousTournaments.length) * 10) / 10,
-        users: Math.round(calculateGrowth(usersInRange.length, previousUsers.length) * 10) / 10,
-        schools: Math.round(calculateGrowth(schoolsInRange.length, previousSchools.length) * 10) / 10,
+        tournaments: Math.round(calculateGrowth(tournamentsInRange, previousTournaments) * 10) / 10,
+        users: Math.round(calculateGrowth(usersInRange, previousUsers) * 10) / 10,
+        schools: Math.round(calculateGrowth(schoolsInRange, previousSchools) * 10) / 10,
       },
     };
   },
@@ -487,11 +504,16 @@ export const financialAnalytics = internalQuery({
       end: now,
     };
 
-    const payments = await ctx.db.query("payments").collect();
-    const filteredPayments = payments.filter(p =>
-      p.created_at >= dateRange.start && p.created_at <= dateRange.end &&
-      (!args.currency || p.currency === args.currency)
-    );
+    const payments = await ctx.db
+      .query("payments")
+      .withIndex("by_created_at", (q) =>
+        q.gte("created_at", dateRange.start).lte("created_at", dateRange.end)
+      )
+      .collect();
+
+    const filteredPayments = args.currency
+      ? payments.filter((p) => p.currency === args.currency)
+      : payments;
 
     const tournaments = await ctx.db.query("tournaments").collect();
     const teams = await ctx.db.query("teams").collect();

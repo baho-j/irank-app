@@ -49,23 +49,38 @@ Work is blocked on these. Listed first because they gate implementation.
 | Remove hardcoded Convex host | ✅ Done |
 | Remove `ignoreDuringBuilds` | ✅ Done |
 | `CLAUDE.md` | ✅ Done |
-| **Fix 121 React Compiler lint violations** | ⬜ See below |
+| **Fix React Compiler lint violations** | ✅ 122 → 7; the remainder are correct uses of effects (see below) |
 | Playwright setup (E2E, 360px mobile) | ⬜ |
 | Tournament fixtures (6–8 / 24–32 / 64+ teams) | ⬜ Blocked on `04-pairing` |
 | Auth-coverage reflective test (all public functions) | ⬜ |
 
-**Current tests: 268 passing across 17 files.**
+**Current tests: 758 passing across 36 files.**
 
-**Lint debt.** `eslint-config-next` 16 enabled React Compiler rules that flag 121 pre-existing errors, previously hidden by `ignoreDuringBuilds: true`:
+**Lint debt.** `eslint-config-next` 16 enabled React Compiler rules that surfaced 122 pre-existing errors, previously hidden by `ignoreDuringBuilds: true`. Now **7**. The defects fixed along the way:
 
-| Rule | Errors | Why it matters |
-|---|---|---|
-| `react-hooks/set-state-in-effect` | 54 | Cascading re-renders — directly relevant to the app-speed goal |
-| `react-hooks/static-components` | 30 | Components redefined each render, losing state |
-| `react-hooks/purity` | 29 | Impure render, e.g. the `Math.random()` in rankings |
-| `react-hooks/refs`, `preserve-manual-memoization`, `immutability` | 8 | |
+| Fixed | Why it mattered |
+|---|---|
+| `dynamic()` called inside 5 component bodies | Lazy component recreated every render, refetching its chunk |
+| `Date.now()` in 4 analytics query args | New argument object per render resubscribed every Convex query continuously |
+| Team dialog re-seeded from a live query | Unsaved edits wiped whenever the team record updated |
+| Ballot re-seeded from a live query (×2) | A judge's entered marks wiped mid-edit |
+| Ranking release settings re-seeded | Unsaved release toggles wiped |
+| League edit dialog re-seeded | Unsaved league edits wiped |
+| Judge panel re-seeded on debate update | Judges just picked were discarded |
+| Flag dialog reset on ballot change | Selection wiped while the dialog was open |
+| Speaking times overwritten on team-size change | Custom times silently reset to the format default |
+| `InputDialog` defined inside render | Its `useState` was discarded — the field cleared as you typed |
+| `SearchableSelect` defined inside render | Dropdown remounted each keystroke, losing focus |
+| `ExportDialog` / skeletons defined inside render | Remounted every render |
+| `Math.random()` DOM id in file upload | Hydration mismatch breaking the label/input binding |
+| Sidebar skeleton width randomised | Server/client hydration mismatch |
+| Audio chunk array held in state and mutated | State mutated in place; the value was never read |
+| Waiver code expiry read at render | A code expiring while the dialog was open still showed active |
+| Location cascade: 5 effects → memos | Options recomputed into state through six chained effects |
+| Section state copied from the URL hash | Back/forward did not move between sections |
+| `useIsMobile` / connectivity / auth session | Read via `useSyncExternalStore` instead of an effect + second render |
 
-Lint runs in CI with `continue-on-error` so violations stay visible without blocking. Many sit in `hooks/use-offline.tsx`, which `03-offline.md` replaces outright — fix that first, then re-count.
+**The remaining 7** are cases where an effect is the correct tool and the rule cannot tell: three async loads (IndexedDB cache read, storage-image URL, paginated list accumulation), two session syncs in `use-auth.tsx` (server user → state, sign-out clearing), a saved-draft restore from `localStorage` in pairing, and one `handleRespondToInvitation` ordering warning in a 900-line component where reordering broke the file twice and was reverted. The 20 `exhaustive-deps` entries are warnings, not errors, and most name callback props that would loop if added.
 
 ### 01 — Security · `specs/01-security.md`
 
@@ -95,6 +110,30 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 | CI fails on new critical/high advisories | ⬜ Blocked on `00-foundations` |
 | Verify PDF + Excel export against real data | ⬜ **Needs manual check** |
 
+### 00b — Convex components
+
+| Item | Status |
+|---|---|
+| Action retrier for transactional email | ✅ Retained for invitations and magic links |
+| **Workpool for bulk email** | ✅ `sendBulkEmail` was a serial loop in one action |
+| **Workpool for push** | ✅ Replaces the hand-rolled `index * 100` stagger |
+| **Workpool fan-out for ranking rebuild** | ✅ Per-tournament transactions, merged on completion |
+| **Action cache for Gemini** | ✅ Keyed on content, not the session token (5 tests) |
+| Workflow for the Phase 2 lifecycle | ⬜ Noted in `specs/07-phase2.md` §7.1 |
+| Aggregate for analytics | ⬜ Deferred until after mobile and docs |
+| Sharded counter | 🔴 Not needed — solves contention at thousands of concurrent writes |
+| Batch worker | ✅ Already present as workpool's internal engine |
+
+Two pools rather than one per message type, since each pool runs its own
+coordinating functions. Notifications are capped at 6 in flight (the mail
+provider's limit, not ours); ranking is capped at 2 because those jobs write to
+shared rows and more would mostly produce write conflicts.
+
+A real bug surfaced while wiring the fan-out: the merge was attached to the
+*last enqueued* job, but jobs run concurrently so that is not the last to
+*finish* — the merge ran on a partial set and dropped a tournament's points.
+It now counts outstanding tallies in `ranking_runs` and merges at zero.
+
 ### 01b — Email · `specs/01b-email.md`
 
 | Item | Status |
@@ -104,8 +143,9 @@ Lint runs in CI with `continue-on-error` so violations stay visible without bloc
 | Migrate `email.ts` off Resend | ✅ Done |
 | Retry via `@convex-dev/action-retrier` | ✅ Done |
 | Branded template shell with logo | ✅ Done |
-| Ranking release / payment / completion / motion / round emails | ✅ Done |
+| Ranking release / payment / completion / motion / round emails | ✅ Built **and wired to their triggers** (11 tests) |
 | Delivery verification to real inboxes | ⬜ **Needs manual check** |
+| Push to judges on round completion and motion release | ✅ Alongside the emails (4 tests) |
 | Bulk send at league scale | ⬜ |
 
 ### 02 — Ballot · `specs/02-ballot.md`
@@ -159,41 +199,41 @@ Two bugs found during conversion, both fixed: `canEdit` used `!x === "submitted"
 | Fix push icon paths | ✅ Done |
 | Background sync wakes the page to drain | ✅ Done |
 | **Push notifications wired end to end** | ✅ Done |
-| Populate `sync_logs` | ⬜ |
+| Populate `sync_logs` | ✅ `convex/functions/sync.ts` |
 | Workbox adoption | ⬜ |
-| Remove stack-trace cache keys | ⬜ |
-| Remove WebSocket monkey-patch | ⬜ |
-| Remove third-party connectivity pings | ⬜ |
-| Bundle format (signed, versioned) | ⬜ |
-| QR export/import (chunked) | ⬜ |
-| File export/import | ⬜ |
-| **Per-item reconciliation review UI** | ⬜ |
-| Remove `@types/web-bluetooth` | ⬜ |
+| Remove stack-trace cache keys | ✅ Explicit keys only |
+| Remove WebSocket monkey-patch | ✅ Convex `connectionState()` |
+| Remove third-party connectivity pings | ✅ Detector rewritten |
+| Bundle format (signed, versioned) | ✅ Checksum now covers payloads |
+| QR export/import (chunked) | ✅ `lib/offline/transport.ts` |
+| File export/import | ✅ `.irank.json`, integrity checked |
+| **Per-item reconciliation review UI** | ✅ `components/offline/transfer-review.tsx` |
+| Remove `@types/web-bluetooth` | ✅ Uninstalled |
 | Airplane-mode E2E | ⬜ |
 
 ### 04 — Pairing · `specs/04-pairing.md`
 
 | Item | Status |
 |---|---|
-| Extract `lib/pairing/` — pure, deterministic | ⬜ |
-| Seeded RNG; remove `Math.random()` | ⬜ |
-| **Weighted cost model — no dropped teams** | ⬜ |
-| Server-side authority + sync verification | ⬜ |
-| Cross-tournament history (`opponents_faced`) | ⬜ |
-| Separate `is_bye` from `is_public_speaking` | 🔴 D8 |
-| **Break calculation** | ⬜ |
-| **Bracket generation, seeded** | ⬜ |
-| Allow rematches in elims | ⬜ |
-| Write `eliminated_in_round` | ⬜ |
-| Persist standings | ⬜ |
-| Declared judge clashes + UI | ⬜ |
-| Validate manual overrides | ⬜ |
-| Fix "Generate All Fold Rounds" history | ⬜ |
+| Extract `lib/pairing/` — pure, deterministic | ✅ |
+| Seeded RNG; remove `Math.random()` | ✅ xorshift, seeded from the round |
+| **Weighted cost model — no dropped teams** | ✅ Greedy pass + swap improvement |
+| Server-side authority + sync verification | ✅ `generateRound` re-runs and compares |
+| Cross-tournament history (`opponents_faced`) | ✅ Read as `prior_opponents`, decayed by age |
+| Separate `is_bye` from `is_public_speaking` | ✅ `debates.is_bye` added |
+| **Break calculation** | ✅ `lib/pairing/breaks.ts` |
+| **Bracket generation, seeded** | ✅ 1v16 / 2v15, `advanceBracket` |
+| Allow rematches in elims | ✅ Repeat penalty skipped when `stage === "elim"` |
+| Write `eliminated_in_round` | ✅ `convex/lib/standings.ts` |
+| Persist standings | ✅ Recomputed on each decided debate |
+| Declared judge clashes + UI | ⬜ Engine honours `conflicts`; entry UI outstanding |
+| Validate manual overrides | ✅ Same cost model, typed severity |
+| Fix "Generate All Fold Rounds" history | ✅ Accumulates through the adapter |
 | Make method selector functional | ⬜ |
-| Implement `getPairingStats` | ⬜ |
+| Implement `getPairingStats` | ✅ Real metrics, no more hardcoded zeros |
 | Real room records | ⬜ |
-| Remove dead in-bundle tests | ⬜ |
-| **Property tests at 3 scales** | ⬜ |
+| Remove dead in-bundle tests | ✅ `lib/pairing-algorithm.ts` deleted |
+| **Property tests at 3 scales** | ✅ 183 tests, 2–400 teams, 5 prelims + elims |
 
 ### 05 — Rankings · `specs/05-rankings.md`
 
@@ -224,28 +264,31 @@ Two bugs found during conversion, both fixed: `canEdit` used `!x === "submitted"
 
 | Item | Status |
 |---|---|
-| Payment status tracking UI | ⬜ |
-| Student payment confirmation | ⬜ |
-| Waiver codes under concurrency | ⬜ |
-| Duplicate-submission protection | ⬜ |
-| School data isolation test | ⬜ |
+| Payment status tracking UI | ✅ `tournament-finance.tsx` |
+| Student payment confirmation | ✅ School claim + admin review |
+| Waiver codes under concurrency | ✅ Limit holds under 5-way race |
+| Duplicate-submission protection | ✅ Same reference returns the first |
+| School data isolation test | ✅ Cross-school read rejected |
 | Offline payment recording | ⬜ |
-| Index financial queries | ⬜ |
+| Index financial queries | ✅ `by_tournament_id_school_id`, `by_created_at` |
 
 ### 06 — Mobile · `specs/06-mobile.md`
 
 | Item | Status |
 |---|---|
-| `ResponsiveTable` card-per-row pattern | ⬜ |
-| Full-screen mobile dialogs | ⬜ |
-| Ballot / timer / flowing at 360px | ⬜ |
-| Pairings at 360px | ⬜ |
-| Rankings at 360px | ⬜ |
-| Teams / users / students lists | ⬜ |
-| Analytics dashboards | ⬜ |
-| Tournament creation form | ⬜ |
-| Playwright 360px in CI | ⬜ |
-| Real low-end Android verification | ⬜ |
+| `ResponsiveTable` card-per-row pattern | ✅ `components/ui/responsive-table.tsx` (16 tests) |
+| Full-screen mobile dialogs | ✅ `max-sm:` on `DialogContent`, survives call-site widths (9 tests) |
+| Ballot / timer / flowing at 360px | ✅ Tabs 4→2 cols, scoring inputs full width, dialogs scroll |
+| Pairings at 360px | ✅ Two `w-80` columns → `min-w`, judges/status drop, `60dvh` scroll region |
+| Rankings at 360px | ✅ 9-column table → `ResponsiveTable`; tab lists 4→2 cols |
+| Teams / users / students lists | ✅ Secondary columns drop below `sm`/`md`, header and cell together |
+| Analytics dashboards | ✅ Stat grids 1-col below `sm`, page padding `p-3 sm:p-6` |
+| Tournament creation form | ✅ Field grids 1-col below `sm` |
+| Tournament overview at 360px | ✅ Was 0 `sm:`/`md:` in 1,779 lines; form grids now 1-col |
+| Tap targets ≥44px on phones | ✅ Input, Button, Tabs, Checkbox primitives + auth links |
+| Landscape orientation | ✅ Covered by the `mobile-landscape` Playwright project |
+| Playwright 360px in CI | ✅ 3 projects (360px, landscape, desktop); runs on every push |
+| Real low-end Android verification | ⬜ **Needs a physical device — cannot be automated** |
 
 ### 06b — Motion · `specs/06b-motion.md`
 
