@@ -2,8 +2,9 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { v } from "convex/values";
-import { action } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { action, internalAction } from "../_generated/server";
+import { components, internal } from "../_generated/api";
+import { ActionCache } from "@convex-dev/action-cache";
 
 const MODEL = "gemini-2.5-flash-lite";
 
@@ -49,14 +50,22 @@ async function requireSession(ctx: any, token: string) {
   return sessionResult.user;
 }
 
-export const validateFeedback = action({
-  args: {
-    token: v.string(),
-    content: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await requireSession(ctx, args.token);
+/**
+ * The three checks below are cached on their inputs.
+ *
+ * Judges re-run them as they edit: the same claim is fact-checked by each
+ * member of a panel, and the same feedback is revalidated on every change.
+ * Each call is billed, and the answer for identical text does not change.
+ *
+ * The session token is deliberately not part of the cached function's
+ * arguments — it would make every key unique and the cache would never hit.
+ * Authorisation happens in the public action, before the cache is consulted.
+ */
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export const runValidateFeedback = internalAction({
+  args: { content: v.string() },
+  handler: async (_ctx, args): Promise<Record<string, any>> => {
     const prompt = `
 You are a professional content moderator for academic debate tournaments. Analyze judge feedback to ensure it is professional and constructive, appropriate for students, non-discriminatory, focused on debate performance rather than personal attacks, and encouraging even when critical.
 
@@ -83,15 +92,30 @@ Be strict but fair, consider cultural sensitivity for international tournaments,
   },
 });
 
-export const factCheckClaim = action({
+const validateFeedbackCache = new ActionCache(components.actionCache, {
+  action: internal.functions.ai.runValidateFeedback,
+  name: "validateFeedback-v1",
+  ttl: CACHE_TTL_MS,
+});
+
+export const validateFeedback = action({
   args: {
     token: v.string(),
+    content: v.string(),
+  },
+  handler: async (ctx, args): Promise<Record<string, any>> => {
+    await requireSession(ctx, args.token);
+
+    return await validateFeedbackCache.fetch(ctx, { content: args.content });
+  },
+});
+
+export const runFactCheckClaim = internalAction({
+  args: {
     claim: v.string(),
     context: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    await requireSession(ctx, args.token);
-
+  handler: async (_ctx, args): Promise<Record<string, any>> => {
     const prompt = `
 You are a fact-checking assistant for academic debate tournaments. Analyze the following claim for accuracy.
 
@@ -117,9 +141,30 @@ Evaluate factual accuracy, allow that some claims are opinions or interpretation
   },
 });
 
-export const checkBias = action({
+const factCheckCache = new ActionCache(components.actionCache, {
+  action: internal.functions.ai.runFactCheckClaim,
+  name: "factCheckClaim-v1",
+  ttl: CACHE_TTL_MS,
+});
+
+export const factCheckClaim = action({
   args: {
     token: v.string(),
+    claim: v.string(),
+    context: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Record<string, any>> => {
+    await requireSession(ctx, args.token);
+
+    return await factCheckCache.fetch(ctx, {
+      claim: args.claim,
+      context: args.context,
+    });
+  },
+});
+
+export const runCheckBias = internalAction({
+  args: {
     content: v.string(),
     content_type: v.union(
       v.literal("feedback"),
@@ -127,9 +172,7 @@ export const checkBias = action({
       v.literal("argument")
     ),
   },
-  handler: async (ctx, args) => {
-    await requireSession(ctx, args.token);
-
+  handler: async (_ctx, args): Promise<Record<string, any>> => {
     const prompt = `
 You are a bias detection assistant for academic debate tournaments. Analyze the following ${args.content_type} for potential bias.
 
@@ -156,5 +199,31 @@ ${args.content}
 Focus on subtle bias the author may be unaware of, keep the academic debate context in mind, and be careful not to over-flag normal evaluation language.`;
 
     return await generateJson(prompt);
+  },
+});
+
+const checkBiasCache = new ActionCache(components.actionCache, {
+  action: internal.functions.ai.runCheckBias,
+  name: "checkBias-v1",
+  ttl: CACHE_TTL_MS,
+});
+
+export const checkBias = action({
+  args: {
+    token: v.string(),
+    content: v.string(),
+    content_type: v.union(
+      v.literal("feedback"),
+      v.literal("comment"),
+      v.literal("argument")
+    ),
+  },
+  handler: async (ctx, args): Promise<Record<string, any>> => {
+    await requireSession(ctx, args.token);
+
+    return await checkBiasCache.fetch(ctx, {
+      content: args.content,
+      content_type: args.content_type,
+    });
   },
 });

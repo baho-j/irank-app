@@ -388,6 +388,7 @@ export default defineSchema({
       v.literal("noShow")
     ),
     is_public_speaking: v.boolean(),
+    is_bye: v.optional(v.boolean()),
     start_time: v.optional(v.number()),
     end_time: v.optional(v.number()),
     current_speaker: v.optional(v.id("users")),
@@ -793,6 +794,34 @@ export default defineSchema({
     .index("by_scope_rank", ["scope", "rank"])
     .index("by_scope_entity", ["scope", "entity_id"]),
 
+  /**
+   * Per-tournament partial tallies, written by the fan-out and consumed by the
+   * merge that follows it. Staged rather than accumulated in memory so each
+   * tournament is its own transaction, which keeps a rebuild bounded however
+   * many tournaments the league has run.
+   */
+  ranking_tallies: defineTable({
+    run_id: v.string(),
+    scope: v.union(v.literal("student"), v.literal("school"), v.literal("volunteer")),
+    entity_id: v.string(),
+    tournament_id: v.id("tournaments"),
+    total_points: v.number(),
+    scores_count: v.number(),
+  })
+    .index("by_run_id", ["run_id"])
+    .index("by_run_id_scope", ["run_id", "scope"]),
+
+  /**
+   * One row per rebuild in flight, counting the tallies still outstanding.
+   * The merge runs when the count reaches zero, since jobs finish in an order
+   * the fan-out cannot predict.
+   */
+  ranking_runs: defineTable({
+    run_id: v.string(),
+    outstanding: v.number(),
+    started_at: v.number(),
+  }).index("by_run_id", ["run_id"]),
+
   payments: defineTable({
     tournament_id: v.id("tournaments"),
     school_id: v.optional(v.id("schools")),
@@ -819,5 +848,6 @@ export default defineSchema({
   })
     .index("by_tournament_id", ["tournament_id", "status"])
     .index("by_school_id", ["school_id", "status"])
+    .index("by_tournament_id_school_id", ["tournament_id", "school_id"])
     .index("by_created_at", ["created_at"]),
 });

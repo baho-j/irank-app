@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { sendBulkEmail } from "../lib/mailer";
+import { Id } from "../_generated/dataModel";
 import { renderEmail, renderList, renderStat } from "../lib/email_layout";
 
 type Recipient = { email: string; name: string };
@@ -22,28 +22,33 @@ async function requireCoordinator(ctx: any, token: string) {
   return sessionResult.user;
 }
 
+/**
+ * Queues a message per recipient.
+ *
+ * The count returned is what was accepted for delivery, not what has arrived —
+ * sending happens in the notification pool after this returns, so a slow mail
+ * server no longer holds up the mutation that triggered it.
+ */
 async function deliver(
+  ctx: any,
   recipients: Recipient[],
   subject: string,
   render: (recipient: Recipient) => string
-) {
-  if (recipients.length === 0) {
-    return { sent: 0, failed: 0, results: [] };
-  }
+): Promise<{ sent: number; failed: number }> {
+  if (recipients.length === 0) return { sent: 0, failed: 0 };
 
-  const results = await sendBulkEmail(
-    recipients.map((recipient) => ({
-      to: recipient.email,
-      subject,
-      html: render(recipient),
-    }))
+  const { queued } = await ctx.runMutation(
+    internal.functions.notification_queue.enqueueEmails,
+    {
+      messages: recipients.map((recipient) => ({
+        to: recipient.email,
+        subject,
+        html: render(recipient),
+      })),
+    }
   );
 
-  return {
-    sent: results.filter((result) => result.success).length,
-    failed: results.filter((result) => !result.success).length,
-    results,
-  };
+  return { sent: queued, failed: 0 };
 }
 
 /**
@@ -51,21 +56,27 @@ async function deliver(
  * speaker rankings reach the students themselves and their schools, while
  * team and school rankings go to schools only.
  */
-export const sendRankingReleaseEmails = action({
-  args: {
-    token: v.string(),
-    tournament_id: v.id("tournaments"),
-    scope: v.union(v.literal("prelims"), v.literal("full_tournament")),
-    released: v.object({
-      students: v.boolean(),
-      teams: v.boolean(),
-      schools: v.boolean(),
-    }),
-  },
-  handler: async (ctx, args): Promise<{ sent: number; failed: number }> => {
-    await requireCoordinator(ctx, args.token);
+const rankingReleaseArgs = {
+  tournament_id: v.id("tournaments"),
+  scope: v.union(v.literal("prelims"), v.literal("full_tournament")),
+  released: v.object({
+    students: v.boolean(),
+    teams: v.boolean(),
+    schools: v.boolean(),
+  }),
+};
 
-    const audience = await ctx.runQuery(
+type RankingReleaseArgs = {
+  tournament_id: Id<"tournaments">;
+  scope: "prelims" | "full_tournament";
+  released: { students: boolean; teams: boolean; schools: boolean };
+};
+
+async function deliverRankingRelease(
+  ctx: any,
+  args: RankingReleaseArgs
+): Promise<{ sent: number; failed: number }> {
+  const audience = await ctx.runQuery(
       internal.functions.notification_recipients.getRankingAudience,
       {
         tournament_id: args.tournament_id,
@@ -95,6 +106,7 @@ export const sendRankingReleaseEmails = action({
 
     // Schools always hear about a release.
     const schoolResult = await deliver(
+      ctx,
       audience.schools,
       `${audience.tournament.name} — rankings released`,
       (recipient) => body(recipient.name)
@@ -105,6 +117,7 @@ export const sendRankingReleaseEmails = action({
     // Students only when their own speaker rankings were part of it.
     if (args.released.students) {
       const studentResult = await deliver(
+        ctx,
         audience.students,
         `${audience.tournament.name} — your speaker ranking is available`,
         (recipient) => body(recipient.name)
@@ -114,64 +127,114 @@ export const sendRankingReleaseEmails = action({
     }
 
     return totals;
+}
+
+/** Fired by the release mutation, for scopes that were newly opened. */
+export const announceRankingRelease = internalAction({
+  args: rankingReleaseArgs,
+  handler: async (ctx, args): Promise<{ sent: number; failed: number }> =>
+    await deliverRankingRelease(ctx, args),
+});
+
+/** The same announcement, sent again on request by a coordinator. */
+export const sendRankingReleaseEmails = action({
+  args: { token: v.string(), ...rankingReleaseArgs },
+  handler: async (ctx, args): Promise<{ sent: number; failed: number }> => {
+    await requireCoordinator(ctx, args.token);
+
+    return await deliverRankingRelease(ctx, args);
   },
+});
+
+const paymentArgs = {
+  school_email: v.string(),
+  school_name: v.string(),
+  tournament_name: v.string(),
+  amount: v.number(),
+  currency: v.string(),
+  reference: v.optional(v.string()),
+};
+
+type PaymentArgs = {
+  school_email: string;
+  school_name: string;
+  tournament_name: string;
+  amount: number;
+  currency: string;
+  reference?: string;
+};
+
+async function deliverPaymentConfirmation(ctx: any, args: PaymentArgs) {
+  return await deliver(
+    ctx,
+    [{ email: args.school_email, name: args.school_name }],
+    `Payment confirmed — ${args.tournament_name}`,
+    (recipient) => renderEmail({
+      title: "Payment confirmed",
+      preheader: `Your payment for ${args.tournament_name} has been recorded.`,
+      greeting: `Hello ${recipient.name},`,
+      body: `<p>We have recorded your payment for <strong>${args.tournament_name}</strong>.</p>
+             ${renderStat("Amount received", `${args.currency} ${args.amount.toLocaleString()}`)}
+             ${args.reference ? `<p style="font-size:13px;">Reference: <strong>${args.reference}</strong></p>` : ""}
+             <p>Your teams are confirmed for this tournament. Keep this email for your records.</p>`,
+    })
+  );
+}
+
+/** Fired when a coordinator confirms a payment a school recorded. */
+export const confirmPaymentByEmail = internalAction({
+  args: paymentArgs,
+  handler: async (ctx, args): Promise<{ sent: number; failed: number }> =>
+    await deliverPaymentConfirmation(ctx, args),
 });
 
 export const sendPaymentConfirmationEmail = action({
-  args: {
-    token: v.string(),
-    school_email: v.string(),
-    school_name: v.string(),
-    tournament_name: v.string(),
-    amount: v.number(),
-    currency: v.string(),
-    reference: v.optional(v.string()),
-  },
+  args: { token: v.string(), ...paymentArgs },
   handler: async (ctx, args): Promise<{ sent: number; failed: number }> => {
     await requireCoordinator(ctx, args.token);
 
-    return await deliver(
-      [{ email: args.school_email, name: args.school_name }],
-      `Payment confirmed — ${args.tournament_name}`,
-      (recipient) => renderEmail({
-        title: "Payment confirmed",
-        preheader: `Your payment for ${args.tournament_name} has been recorded.`,
-        greeting: `Hello ${recipient.name},`,
-        body: `<p>We have recorded your payment for <strong>${args.tournament_name}</strong>.</p>
-               ${renderStat("Amount received", `${args.currency} ${args.amount.toLocaleString()}`)}
-               ${args.reference ? `<p style="font-size:13px;">Reference: <strong>${args.reference}</strong></p>` : ""}
-               <p>Your teams are confirmed for this tournament. Keep this email for your records.</p>`,
-      })
-    );
+    return await deliverPaymentConfirmation(ctx, args);
   },
 });
 
+async function deliverTournamentCompleted(
+  ctx: any,
+  tournamentId: Id<"tournaments">
+): Promise<{ sent: number; failed: number }> {
+  const audience = await ctx.runQuery(
+    internal.functions.notification_recipients.getRankingAudience,
+    { tournament_id: tournamentId, include_students: false }
+  );
+
+  return await deliver(
+    ctx,
+    audience.schools,
+    `Thank you for taking part in ${audience.tournament.name}`,
+    (recipient) => renderEmail({
+      title: `Thank you for joining ${audience.tournament.name}`,
+      preheader: "The tournament has concluded.",
+      greeting: `Hello ${recipient.name},`,
+      body: `<p><strong>${audience.tournament.name}</strong> has concluded, and we want to thank your school for taking part.</p>
+             <p>Your students' results contribute to their league standing. Rankings appear on iRank once released by the coordinator.</p>
+             <p>We hope to see you at the next tournament.</p>`,
+      button: { label: "View tournament", url: `${siteUrl()}/tournaments/${audience.tournament.slug}` },
+    })
+  );
+}
+
+/** Fired when a tournament's status moves to completed. */
+export const thankSchoolsForTournament = internalAction({
+  args: { tournament_id: v.id("tournaments") },
+  handler: async (ctx, args): Promise<{ sent: number; failed: number }> =>
+    await deliverTournamentCompleted(ctx, args.tournament_id),
+});
+
 export const sendTournamentCompletedEmails = action({
-  args: {
-    token: v.string(),
-    tournament_id: v.id("tournaments"),
-  },
+  args: { token: v.string(), tournament_id: v.id("tournaments") },
   handler: async (ctx, args): Promise<{ sent: number; failed: number }> => {
     await requireCoordinator(ctx, args.token);
 
-    const audience = await ctx.runQuery(
-      internal.functions.notification_recipients.getRankingAudience,
-      { tournament_id: args.tournament_id, include_students: false }
-    );
-
-    return await deliver(
-      audience.schools,
-      `Thank you for taking part in ${audience.tournament.name}`,
-      (recipient) => renderEmail({
-        title: `Thank you for joining ${audience.tournament.name}`,
-        preheader: "The tournament has concluded.",
-        greeting: `Hello ${recipient.name},`,
-        body: `<p><strong>${audience.tournament.name}</strong> has concluded, and we want to thank your school for taking part.</p>
-               <p>Your students' results contribute to their league standing. Rankings appear on iRank once released by the coordinator.</p>
-               <p>We hope to see you at the next tournament.</p>`,
-        button: { label: "View tournament", url: `${siteUrl()}/tournaments/${audience.tournament.slug}` },
-      })
-    );
+    return await deliverTournamentCompleted(ctx, args.tournament_id);
   },
 });
 
@@ -201,7 +264,23 @@ export const sendMotionReleasedEmails = internalAction({
       ...(audience.is_dreams_mode ? audience.volunteers : []),
     ];
 
+    // A motion is time-critical, so it goes to the device as well as the
+    // inbox, to the same people.
+    await ctx.runMutation(internal.functions.notifications.notifyUsers, {
+      user_ids: [
+        ...audience.judge_ids,
+        ...(audience.is_dreams_mode ? audience.student_ids : []),
+        ...(audience.is_dreams_mode ? audience.volunteer_ids : []),
+      ],
+      title: `Round ${audience.round.round_number} motion released`,
+      message: audience.round.motion,
+      type: "debate",
+      related_id: args.round_id,
+      send_push: true,
+    });
+
     return await deliver(
+      ctx,
       recipients,
       `Motion released — Round ${audience.round.round_number}`,
       (recipient) => renderEmail({
@@ -231,7 +310,17 @@ export const sendRoundCompletedEmails = internalAction({
       { tournament_id: args.tournament_id, round_id: args.round_id }
     );
 
+    await ctx.runMutation(internal.functions.notifications.notifyUsers, {
+      user_ids: audience.judge_ids,
+      title: `Round ${audience.round.round_number} is complete`,
+      message: `All ballots for Round ${audience.round.round_number} of ${audience.tournament.name} are in.`,
+      type: "debate",
+      related_id: args.round_id,
+      send_push: true,
+    });
+
     return await deliver(
+      ctx,
       audience.judges,
       `Round ${audience.round.round_number} complete — ${audience.tournament.name}`,
       (recipient) => renderEmail({

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api, internal } from "../_generated/api";
-import { createUserWithSession, setupTest } from "../test_helpers.test-utils";
+import { createUserWithSession, drainPools, setupTest } from "../test_helpers.test-utils";
 import { Id } from "../_generated/dataModel";
 
 type T = ReturnType<typeof setupTest>;
@@ -63,8 +63,20 @@ async function seedPoints(
   });
 }
 
-const rebuild = (t: T) =>
-  t.mutation(internal.functions.ranking_snapshots.rebuildSnapshots, {});
+/**
+ * Starts the rebuild and waits for the fan-out to drain. The tallies are
+ * queued, so a test that read the leaderboard immediately would see the
+ * previous run's numbers.
+ */
+const rebuild = async (t: T) => {
+  await t.mutation(internal.functions.ranking_rebuild.startRebuild, {});
+
+  await drainPools(
+    t,
+    async () =>
+      (await t.run(async (ctx) => ctx.db.query("ranking_runs").collect())).length === 0
+  );
+};
 
 const board = (t: T, token: string) =>
   t.query(api.functions.ranking_snapshots.getLeaderboard, { token, scope: "student" });
