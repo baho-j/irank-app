@@ -3,11 +3,13 @@ import actionRetrier from "@convex-dev/action-retrier/convex.config.js";
 import actionCache from "@convex-dev/action-cache/convex.config.js";
 import workpool from "@convex-dev/workpool/convex.config.js";
 import aggregate from "@convex-dev/aggregate/convex.config.js";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config.js";
 
 const app = defineApp();
 
 app.use(actionRetrier);
 app.use(actionCache);
+app.use(rateLimiter);
 
 // Counts over a date range for the admin dashboard, which previously loaded
 // every row of each table and filtered in JavaScript. One aggregate per table

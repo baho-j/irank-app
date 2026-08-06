@@ -23,12 +23,13 @@ export default function VolunteerSignUp() {
     : volunteerImages[0]
 
   return (
-    <div className="flex min-h-screen dark:bg-gray-900">
+    <div className="flex min-h-dvh dark:bg-gray-900">
       <div className="hidden md:block md:w-1/2 bg-cover bg-center relative overflow-hidden">
         <Image
           src={volunteerImage}
           alt="Volunteer signup background"
           fill
+          sizes="(max-width: 768px) 0px, 50vw"
           className="object-cover"
           priority
         />
@@ -72,7 +73,7 @@ export default function VolunteerSignUp() {
         </div>
       </div>
 
-      <div className="w-full md:w-1/2 flex items-center justify-center p-6">
+      <div className="w-full md:w-1/2 flex items-center justify-center overflow-y-auto p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}

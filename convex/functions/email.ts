@@ -264,7 +264,11 @@ export const sendWelcomeEmail = action({
   },
 });
 
-export const sendMagicLinkEmail = action({
+/**
+ * Internal, and scheduled by generateMagicLink. The token is a credential, so
+ * it is never returned to the browser for the client to post back here.
+ */
+export const deliverMagicLink = internalAction({
   args: {
     email: v.string(),
     token: v.string(),

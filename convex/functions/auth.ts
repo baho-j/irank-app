@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import { hashPassword, verifyPassword } from "../lib/password";
+import { limiter, retryMessage } from "../lib/limits";
 
 type CurrentUserResponse = {
   id: string;
@@ -54,7 +55,16 @@ function getErrorMessage(code: string): string {
     "MFA is only available for school administrators, volunteers, and administrators": "Multi-factor authentication is only available for school administrators, volunteers, and administrators.",
   };
 
-  return errorMap[code] || "Something went wrong. Please try again or contact support.";
+  if (errorMap[code]) return errorMap[code];
+
+  // Rate limit messages already say what happened and when to retry, and are
+  // written for the person reading them. Collapsing them into "something went
+  // wrong" would leave someone repeatedly hitting a wall with no explanation.
+  if (code.startsWith("Too many") || code.startsWith("The assistant is busy")) {
+    return code;
+  }
+
+  return "Something went wrong. Please try again or contact support.";
 }
 
 async function generateSecureToken(payload: any): Promise<string> {
@@ -210,6 +220,14 @@ export const signUp = mutation({
     try {
       const now = Date.now();
 
+      const registrations = await limiter.limit(ctx, "signUpGlobal");
+
+      if (!registrations.ok) {
+        throw new Error(
+          `Too many accounts created recently. ${retryMessage(registrations.retryAfter ?? 0)}`
+        );
+      }
+
       const existingUser = await ctx.db
         .query("users")
         .withIndex("by_email", (q) => q.eq("email", args.email))
@@ -246,6 +264,23 @@ export const signUp = mutation({
       if (args.role === "volunteer") {
         if (!args.high_school_attended || !args.national_id) {
           throw new Error("High school and national ID are required for volunteers");
+        }
+      }
+
+      // Sign-up is public, so the admin role has to be closed here or anyone
+      // could grant themselves one from a browser console. The only exception
+      // is the very first account, which has to come from somewhere; after
+      // that, admins are created by an existing admin from the users screen.
+      if (args.role === "admin") {
+        const existingAdmin = await ctx.db
+          .query("users")
+          .withIndex("by_role", (q) => q.eq("role", "admin"))
+          .first();
+
+        if (existingAdmin) {
+          throw new Error(
+            "Administrator accounts are created by an existing administrator, not through sign-up."
+          );
         }
       }
 
@@ -334,6 +369,42 @@ export const signUp = mutation({
     } catch (error: any) {
       throw new Error(getErrorMessage(error.message));
     }
+  },
+});
+
+/**
+ * Counts a sign-in attempt and reports whether it is allowed.
+ *
+ * Separate from `signIn` because a failed mutation rolls back its writes,
+ * including the limiter's own — so counting inside `signIn` would only ever
+ * limit *successful* sign-ins, which is exactly backwards for guessing.
+ */
+export const recordSignInAttempt = mutation({
+  // An email for password sign-in, a phone number for student sign-in. Both
+  // guess a secret, so both draw on the same budget.
+  args: { identifier: v.string() },
+  handler: async (ctx, args): Promise<{ ok: boolean; message?: string }> => {
+    const perEmail = await limiter.limit(ctx, "signInPerEmail", {
+      key: args.identifier.trim().toLowerCase(),
+    });
+
+    if (!perEmail.ok) {
+      return {
+        ok: false,
+        message: `Too many sign-in attempts. ${retryMessage(perEmail.retryAfter ?? 0)}`,
+      };
+    }
+
+    const overall = await limiter.limit(ctx, "signInGlobal");
+
+    if (!overall.ok) {
+      return {
+        ok: false,
+        message: `Too many sign-in attempts. ${retryMessage(overall.retryAfter ?? 0)}`,
+      };
+    }
+
+    return { ok: true };
   },
 });
 
@@ -679,32 +750,63 @@ export const generateMagicLink = mutation({
   },
   handler: async (ctx, args) => {
     try {
+      // Checked before the lookup, so a caller cannot use response timing to
+      // tell a registered address from an unregistered one.
+      const perEmail = await limiter.limit(ctx, "magicLinkPerEmail", {
+        key: args.email.trim().toLowerCase(),
+      });
+
+      if (!perEmail.ok) {
+        throw new Error(
+          `Too many sign-in links requested. ${retryMessage(perEmail.retryAfter ?? 0)}`
+        );
+      }
+
+      const overall = await limiter.limit(ctx, "magicLinkGlobal");
+
+      if (!overall.ok) {
+        throw new Error(
+          `Too many sign-in links requested. ${retryMessage(overall.retryAfter ?? 0)}`
+        );
+      }
+
       const user = await ctx.db
         .query("users")
         .withIndex("by_email", (q) => q.eq("email", args.email))
         .first();
 
-      if (!user && args.purpose === "login") {
-        throw new Error("User not found");
-      }
-
       const now = Date.now();
-      const token = generateRandomToken();
-      const expiresAt = now + (15 * 60 * 1000);
 
-      await ctx.db.insert("magic_links", {
-        email: args.email,
-        token,
-        user_id: user?._id,
-        purpose: args.purpose,
-        expires_at: expiresAt,
-        created_at: now,
-      });
+      // An unregistered address gets the same answer as a registered one.
+      // Saying "user not found" turns this into an oracle: someone can work
+      // through a list of addresses and learn which belong to real accounts.
+      if (user) {
+        const token = generateRandomToken();
+
+        await ctx.db.insert("magic_links", {
+          email: args.email,
+          token,
+          user_id: user._id,
+          purpose: args.purpose,
+          expires_at: now + 15 * 60 * 1000,
+          created_at: now,
+        });
+
+        // Sent from here rather than handed back to the browser. The token is
+        // a credential; returning it put it in the network tab of anyone
+        // watching, and in any logging in between.
+        if (args.purpose === "login" || args.purpose === "password_reset") {
+          await ctx.scheduler.runAfter(0, internal.functions.email.deliverMagicLink, {
+            email: args.email,
+            token,
+            purpose: args.purpose,
+          });
+        }
+      }
 
       return {
         success: true,
-        message: "Magic link sent to your email address.",
-        token
+        message: "If that address has an account, a sign-in link is on its way.",
       };
     } catch (error: any) {
       throw new Error(getErrorMessage(error.message));
@@ -833,6 +935,33 @@ export const verifyMagicLink = mutation({
     } catch (error: any) {
       throw new Error(getErrorMessage(error.message));
     }
+  },
+});
+
+/**
+ * Counts a password reset attempt. Separate from `resetPassword` for the same
+ * reason as `recordSignInAttempt`: rejecting an invalid token rolls the
+ * mutation back, so an inline count would never limit token guessing.
+ */
+export const recordPasswordResetAttempt = mutation({
+  args: { reset_token: v.string() },
+  handler: async (ctx, args): Promise<{ ok: boolean; message?: string }> => {
+    const payload = await verifySecureToken(args.reset_token).catch(() => null);
+
+    const resets = payload?.userId
+      ? await limiter.limit(ctx, "passwordResetPerUser", {
+          key: String(payload.userId),
+        })
+      : await limiter.limit(ctx, "passwordResetUnverified");
+
+    if (!resets.ok) {
+      return {
+        ok: false,
+        message: `Too many password reset attempts. ${retryMessage(resets.retryAfter ?? 0)}`,
+      };
+    }
+
+    return { ok: true };
   },
 });
 

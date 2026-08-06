@@ -21,6 +21,7 @@
     "@convex-dev/action-cache": "^0.3.1",
     "@convex-dev/action-retrier": "^0.3.1",
     "@convex-dev/aggregate": "^0.2.2",
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/workpool": "^0.4.9",
     "@google/genai": "^2.15.0",
     "@hookform/resolvers": "^5.1.1",

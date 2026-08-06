@@ -651,6 +651,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
             src={imageUrl}
             alt={tournament.name}
             fill
+            sizes="(max-width: 768px) 100vw, 75vw"
             className="object-cover"
           />
           <div className="absolute inset-0 bg-black/50" />

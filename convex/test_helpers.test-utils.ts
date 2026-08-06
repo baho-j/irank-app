@@ -5,6 +5,7 @@ import workpoolTest from "@convex-dev/workpool/test";
 import cacheTest from "@convex-dev/action-cache/test";
 import retrierTest from "@convex-dev/action-retrier/test";
 import aggregateTest from "@convex-dev/aggregate/test";
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
 
 export const modules = import.meta.glob(["./**/*.{ts,js}", "!./**/*.test.ts"]);
 
@@ -22,6 +23,7 @@ export function setupTest() {
   workpoolTest.register(t, "notificationPool");
   workpoolTest.register(t, "rankingPool");
   cacheTest.register(t);
+  rateLimiterTest.register(t);
   retrierTest.register(t);
 
   for (const name of [

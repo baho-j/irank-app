@@ -61,21 +61,24 @@ export default function NotFound() {
         Welcome to 70&apos;s
       </h2>
 
-      <div className="w-[600px] h-[400px] relative">
+      <div className="w-full max-w-[600px] aspect-[3/2] relative">
         <div className="w-full h-full z-0 relative">
           <Image
             src="/images/dots-and-stars.png"
-            alt="Background pattern"
+            alt=""
             fill
+            sizes="(max-width: 600px) 100vw, 600px"
+            priority
             className="w-full h-full object-cover"
           />
         </div>
-        <div className="absolute h-full inset-1 grid place-content-center">
-          <div className="w-80 h-80 relative">
+        <div className="absolute inset-0 grid place-content-center pointer-events-none">
+          <div className="w-64 sm:w-80 aspect-square relative">
             <Image
               src="/images/peeps.png"
               alt="70's themed people"
               fill
+              sizes="(max-width: 640px) 16rem, 20rem"
               className="object-contain"
             />
           </div>
@@ -85,7 +88,7 @@ export default function NotFound() {
       <div className="mx-auto mt-4 flex items-center">
         <Button
           onClick={handleNavigateBack}
-          className="flex items-center justify-center"
+          className="relative z-10 flex items-center justify-center"
         >
           <Undo2 size={20} className="mr-2" />
           {isAuthenticated && user ? (

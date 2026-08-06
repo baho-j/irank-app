@@ -509,6 +509,7 @@ export default function CreateTournamentPage() {
             src={imageUrl}
             alt="Tournament banner"
             fill
+            sizes="(max-width: 768px) 100vw, 75vw"
             className="object-cover"
           />
           <div className="absolute inset-0 bg-black/40" />

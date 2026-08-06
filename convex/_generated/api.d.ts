@@ -21,11 +21,13 @@ import type * as functions_admin_tournaments from "../functions/admin/tournament
 import type * as functions_admin_users from "../functions/admin/users.js";
 import type * as functions_aggregate_backfill from "../functions/aggregate_backfill.js";
 import type * as functions_ai from "../functions/ai.js";
+import type * as functions_ai_budget from "../functions/ai_budget.js";
 import type * as functions_alerts from "../functions/alerts.js";
 import type * as functions_analytics from "../functions/analytics.js";
 import type * as functions_audit from "../functions/audit.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_ballots from "../functions/ballots.js";
+import type * as functions_bootstrap from "../functions/bootstrap.js";
 import type * as functions_email from "../functions/email.js";
 import type * as functions_finance from "../functions/finance.js";
 import type * as functions_invitations from "../functions/invitations.js";
@@ -59,6 +61,7 @@ import type * as lib_aggregates from "../lib/aggregates.js";
 import type * as lib_ballot_results from "../lib/ballot_results.js";
 import type * as lib_ballot_validation from "../lib/ballot_validation.js";
 import type * as lib_email_layout from "../lib/email_layout.js";
+import type * as lib_limits from "../lib/limits.js";
 import type * as lib_mailer from "../lib/mailer.js";
 import type * as lib_motion_release from "../lib/motion_release.js";
 import type * as lib_pairing_inputs from "../lib/pairing_inputs.js";
@@ -89,11 +92,13 @@ declare const fullApi: ApiFromModules<{
   "functions/admin/users": typeof functions_admin_users;
   "functions/aggregate_backfill": typeof functions_aggregate_backfill;
   "functions/ai": typeof functions_ai;
+  "functions/ai_budget": typeof functions_ai_budget;
   "functions/alerts": typeof functions_alerts;
   "functions/analytics": typeof functions_analytics;
   "functions/audit": typeof functions_audit;
   "functions/auth": typeof functions_auth;
   "functions/ballots": typeof functions_ballots;
+  "functions/bootstrap": typeof functions_bootstrap;
   "functions/email": typeof functions_email;
   "functions/finance": typeof functions_finance;
   "functions/invitations": typeof functions_invitations;
@@ -127,6 +132,7 @@ declare const fullApi: ApiFromModules<{
   "lib/ballot_results": typeof lib_ballot_results;
   "lib/ballot_validation": typeof lib_ballot_validation;
   "lib/email_layout": typeof lib_email_layout;
+  "lib/limits": typeof lib_limits;
   "lib/mailer": typeof lib_mailer;
   "lib/motion_release": typeof lib_motion_release;
   "lib/pairing_inputs": typeof lib_pairing_inputs;
@@ -167,6 +173,7 @@ export declare const internal: FilterApi<
 export declare const components: {
   actionRetrier: import("@convex-dev/action-retrier/_generated/component.js").ComponentApi<"actionRetrier">;
   actionCache: import("@convex-dev/action-cache/_generated/component.js").ComponentApi<"actionCache">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   usersByCreation: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"usersByCreation">;
   schoolsByCreation: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"schoolsByCreation">;
   tournamentsByCreation: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"tournamentsByCreation">;

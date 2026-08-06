@@ -194,6 +194,97 @@ This is blocked on `00-foundations.md`: upgrading dependencies without tests or 
 
 ---
 
+## Rate limiting on unauthenticated endpoints
+
+### Problem
+
+Every endpoint an anonymous caller can reach was unbounded. `generateMagicLink`
+sends mail, so a loop from a browser console meant unbounded outbound mail
+against the SMTP quota. `signIn` runs a password hash, so a loop meant
+unbounded password guessing. The Gemini actions are billed per call.
+
+The account lockout in `signIn` counts failures per user, but only after the
+lookup and hashing work, and only for addresses that exist.
+
+### Design
+
+The `@convex-dev/rate-limiter` component, with limits defined in
+`convex/lib/limits.ts`. Keyed per email, phone, or user wherever possible so
+one person hammering an endpoint cannot lock everybody else out; global limits
+sit alongside as a backstop against a distributed attempt, set well above real
+use.
+
+**The rollback problem.** The component is transactional: if a mutation throws,
+its rate limit consumption rolls back with everything else. Counting inside
+`signIn` would therefore limit only *successful* sign-ins, which is exactly
+backwards. The count lives in its own mutation — `recordSignInAttempt`,
+`recordPasswordResetAttempt` — that the client calls first and that commits
+independently of the outcome.
+
+**Unverifiable tokens cannot be the key.** `recordPasswordResetAttempt` keys on
+the user id when the token verifies. When it does not, the caller chose the
+token, so keying on it would hand every guess a fresh budget. Those attempts
+share one global bucket instead.
+
+Magic links need no separate counter: they deliberately succeed for registered
+and unregistered addresses alike, so the mutation commits either way.
+
+### Acceptance criteria
+
+- [x] Magic link requests are limited per address and globally
+- [x] Forgot-password is covered (it is the same mutation as magic link)
+- [x] Sign-in is limited per email and per phone, and the count survives a
+      failed sign-in
+- [x] Password reset token guessing is limited, including for tokens that do
+      not verify
+- [x] Sign-up is limited globally
+- [x] Gemini actions are limited per user and globally
+- [x] Refusals say when to try again, in units a person can act on
+- [x] One address being limited does not block another
+
+---
+
+## Account enumeration and the first administrator
+
+### Problem
+
+`generateMagicLink` answered "No account was found with the provided details."
+for an unregistered address and succeeded for a registered one. That is an
+oracle: a script can test a list of addresses and learn which have accounts,
+which is exactly what a credential-stuffing run wants before it starts.
+
+It also returned the magic link token in the mutation result, putting a
+credential in the browser's network tab and anywhere in between.
+
+Separately, `signUp` accepted `role: "admin"` from the client with no guard, so
+anyone could create an administrator from a browser console. Closing that left
+a fresh deployment with no way in at all.
+
+### Design
+
+`generateMagicLink` returns the same message and the same shape for every
+address, and creates a link only when the address is registered. Rate limits
+run *before* the user lookup, so response timing does not leak registration
+either. The token is never returned; the email is sent server-side.
+
+`signUp` refuses `role: "admin"` once any administrator exists.
+
+`functions/bootstrap:createFirstAdmin` is an `internalMutation`, unreachable
+from a browser and runnable only from a terminal with deploy credentials. It
+refuses once any administrator exists, so it cannot be used later to quietly
+grant access.
+
+### Acceptance criteria
+
+- [x] An unregistered address gets the same answer as a registered one
+- [x] The magic link token is never returned to the caller
+- [x] A link is created for a registered address and not for an unregistered one
+- [x] `signUp` refuses to create an administrator once one exists
+- [x] The first administrator can be created only with deploy credentials, and
+      only once
+
+---
+
 ## Out of scope
 
 - Centralizing auth helpers → `07-phase2.md`

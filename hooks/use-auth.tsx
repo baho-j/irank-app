@@ -204,17 +204,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpMutation = useMutation(api.functions.auth.signUp)
   const signInMutation = useMutation(api.functions.auth.signIn)
+  const recordSignInAttemptMutation = useMutation(api.functions.auth.recordSignInAttempt)
   const signInWithPhoneMutation = useMutation(api.functions.auth.signInWithPhone)
   const signOutMutation = useMutation(api.functions.auth.signOut)
   const generateMagicLinkMutation = useMutation(api.functions.auth.generateMagicLink)
   const verifyMagicLinkMutation = useMutation(api.functions.auth.verifyMagicLink)
   const resetPasswordMutation = useMutation(api.functions.auth.resetPassword)
+  const recordPasswordResetAttemptMutation = useMutation(api.functions.auth.recordPasswordResetAttempt)
   const changePasswordMutation = useMutation(api.functions.auth.changePassword)
   const enableMFAMutation = useMutation(api.functions.auth.enableMFA)
   const disableMFAMutation = useMutation(api.functions.auth.disableMFA)
   const updateSecurityQuestionMutation = useMutation(api.functions.auth.updateSecurityQuestion)
   const sendWelcomeEmail = useAction(api.functions.email.sendWelcomeEmail);
-  const sendMagicLinkEmail = useAction(api.functions.email.sendMagicLinkEmail);
 
   const currentUser = useQuery(
     api.functions.auth.getCurrentUser,
@@ -327,6 +328,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
 
+      // Counted in its own mutation first: a failed sign-in rolls back its own
+      // writes, so counting inside it would only limit successful attempts.
+      const allowed = await recordSignInAttemptMutation({ identifier: email })
+
+      if (!allowed.ok) {
+        toast.error(allowed.message)
+        return { success: false, message: allowed.message }
+      }
+
       const result = await signInMutation({
         email,
         password,
@@ -382,6 +392,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
 
+      const allowed = await recordSignInAttemptMutation({
+        identifier: data.phone,
+      })
+
+      if (!allowed.ok) {
+        toast.error(allowed.message)
+        return
+      }
+
       const result = await signInWithPhoneMutation({
         ...data,
         device_info: getDeviceInfo(),
@@ -423,16 +442,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         purpose,
       })
 
+      // The mutation sends the email itself; the token is never handed to the
+      // browser, and the message is the same whether or not the address is
+      // registered.
       if (result.success) {
-        try {
-          await sendMagicLinkEmail({
-            email,
-            purpose,
-            token: result.token,
-          });
-        } catch (err) {
-          console.error("Failed to send magic link email:", err);
-        }
         toast.success(result.message)
       }
     } catch (error: any) {
@@ -488,6 +501,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (resetToken: string, newPassword: string) => {
     try {
+      // Counted first so a rejected token still consumes the attempt.
+      const allowed = await recordPasswordResetAttemptMutation({
+        reset_token: resetToken,
+      })
+
+      if (!allowed.ok) {
+        toast.error(allowed.message)
+        return
+      }
+
       const result = await resetPasswordMutation({
         reset_token: resetToken,
         new_password: newPassword,

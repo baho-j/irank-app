@@ -38,6 +38,19 @@ async function generateJson(prompt: string): Promise<Record<string, any>> {
   return JSON.parse(match[0]);
 }
 
+/** Verifies the session, then spends one unit of that user's budget. */
+async function requireBudgetedSession(ctx: any, token: string) {
+  const user = await requireSession(ctx, token);
+
+  const budget = await ctx.runMutation(internal.functions.ai_budget.consumeAiBudget, {
+    user_id: String(user.id),
+  });
+
+  if (!budget.ok) throw new Error(budget.message);
+
+  return user;
+}
+
 async function requireSession(ctx: any, token: string) {
   const sessionResult = await ctx.runQuery(internal.functions.auth.verifySessionReadOnly, {
     token,
@@ -104,7 +117,7 @@ export const validateFeedback = action({
     content: v.string(),
   },
   handler: async (ctx, args): Promise<Record<string, any>> => {
-    await requireSession(ctx, args.token);
+    await requireBudgetedSession(ctx, args.token);
 
     return await validateFeedbackCache.fetch(ctx, { content: args.content });
   },
@@ -154,7 +167,7 @@ export const factCheckClaim = action({
     context: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Record<string, any>> => {
-    await requireSession(ctx, args.token);
+    await requireBudgetedSession(ctx, args.token);
 
     return await factCheckCache.fetch(ctx, {
       claim: args.claim,
@@ -219,7 +232,7 @@ export const checkBias = action({
     ),
   },
   handler: async (ctx, args): Promise<Record<string, any>> => {
-    await requireSession(ctx, args.token);
+    await requireBudgetedSession(ctx, args.token);
 
     return await checkBiasCache.fetch(ctx, {
       content: args.content,

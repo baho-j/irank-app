@@ -116,7 +116,15 @@ export function useConvexOfflineDetector(options?: ConvexOfflineDetectorOptions)
     let convexConnected = browserOnline;
 
     try {
-      convexConnected = convex.connectionState().isWebSocketConnected;
+      const connectionState = convex.connectionState();
+
+      // The socket takes a moment to open on a fresh page load. Reporting
+      // offline during that window flashes the banner on every navigation, so
+      // the client is given the benefit of the doubt until it has connected
+      // once; after that a dropped socket means what it says.
+      convexConnected = connectionState.hasEverConnected
+        ? connectionState.isWebSocketConnected
+        : true;
     } catch {
       // An older client without connectionState falls back to the browser.
     }
@@ -147,20 +155,31 @@ export function useConvexOfflineDetector(options?: ConvexOfflineDetectorOptions)
 
     read();
 
-    const interval = window.setInterval(read, options?.pollInterval ?? DEFAULT_POLL_INTERVAL);
     const connection = networkInformation();
 
     window.addEventListener("online", read);
     window.addEventListener("offline", read);
     connection?.addEventListener?.("change", read);
 
+    // The client reports its own socket changes, so this only falls back to
+    // polling on a client old enough to lack the subscription.
+    let unsubscribe: (() => void) | undefined;
+    let interval: number | undefined;
+
+    try {
+      unsubscribe = convex.subscribeToConnectionState(() => read());
+    } catch {
+      interval = window.setInterval(read, options?.pollInterval ?? DEFAULT_POLL_INTERVAL);
+    }
+
     return () => {
-      window.clearInterval(interval);
+      unsubscribe?.();
+      if (interval !== undefined) window.clearInterval(interval);
       window.removeEventListener("online", read);
       window.removeEventListener("offline", read);
       connection?.removeEventListener?.("change", read);
     };
-  }, [read, options?.pollInterval]);
+  }, [read, convex, options?.pollInterval]);
 
   return {
     ...state,
