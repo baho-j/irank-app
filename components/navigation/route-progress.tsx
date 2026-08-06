@@ -73,10 +73,17 @@ export function RouteProgress() {
     };
   }, []);
 
-  // The new route has rendered, so finish and fade out.
+  // The new route has rendered, so run the bar to the end and fade it out.
+  const routeKey = `${pathname}?${searchParams}`;
+  const [completedFor, setCompletedFor] = useState(routeKey);
+
+  if (routeKey !== completedFor) {
+    setCompletedFor(routeKey);
+    setProgress(100);
+  }
+
   useEffect(() => {
     clearTimers();
-    setProgress(100);
 
     const hide = window.setTimeout(() => {
       setVisible(false);

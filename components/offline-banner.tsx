@@ -29,50 +29,31 @@ export function AdvancedOfflineSheet() {
   const [previousOfflineState, setPreviousOfflineState] = useState(isOffline)
   const [previousConvexState, setPreviousConvexState] = useState(convexConnected)
 
+  // Transitions are detected while rendering, so the sheet appears on the same
+  // paint as the change. Only the auto-hide timers remain in an effect.
+  if (previousOfflineState !== isOffline) {
+    setPreviousOfflineState(isOffline)
+    setShowSheet(true)
+    setJustWentOnline(!isOffline)
+  }
+
+  if (previousConvexState !== convexConnected && isOnline) {
+    setPreviousConvexState(convexConnected)
+    setShowSheet(true)
+    setJustWentOnline(convexConnected && !isOffline)
+  }
+
+  // A "back online" message is transient; being offline stays on screen.
   useEffect(() => {
-    if (previousOfflineState !== isOffline) {
-      setPreviousOfflineState(isOffline)
+    if (!justWentOnline) return
 
-      if (isOffline) {
-        setShowSheet(true)
-        setJustWentOnline(false)
-      } else {
-        // Just went online
-        setJustWentOnline(true)
-        setShowSheet(true)
+    const timer = setTimeout(() => {
+      setShowSheet(false)
+      setJustWentOnline(false)
+    }, 3000)
 
-        // Hide the "back online" sheet after 3 seconds
-        const timer = setTimeout(() => {
-          setShowSheet(false)
-          setJustWentOnline(false)
-        }, 3000)
-
-        return () => clearTimeout(timer)
-      }
-    }
-
-    // Detect Convex connection changes (when online but Convex disconnected)
-    if (previousConvexState !== convexConnected && isOnline) {
-      setPreviousConvexState(convexConnected)
-
-      if (!convexConnected) {
-        // Convex disconnected while online - show reconnecting sheet
-        setShowSheet(true)
-        setJustWentOnline(false)
-      } else if (convexConnected && !isOffline) {
-        // Convex reconnected - show brief success message
-        setJustWentOnline(true)
-        setShowSheet(true)
-
-        const timer = setTimeout(() => {
-          setShowSheet(false)
-          setJustWentOnline(false)
-        }, 2000)
-
-        return () => clearTimeout(timer)
-      }
-    }
-  }, [isOffline, convexConnected, previousOfflineState, previousConvexState, isOnline])
+    return () => clearTimeout(timer)
+  }, [justWentOnline])
 
   const getOfflineDuration = () => {
     if (!lastOfflineAt) return ""

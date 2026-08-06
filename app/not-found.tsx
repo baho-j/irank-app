@@ -9,17 +9,15 @@ import { Inter } from "next/font/google"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import AppLoader from "@/components/app-loader";
+import { useHydrated } from "@/hooks/use-hydrated"
 
 const inter = Inter({ subsets: ['latin'] })
 
 export default function NotFound() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading } = useAuth()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  // Auth state resolves on the device, so the page waits for hydration.
+  const hydrated = useHydrated()
 
   const handleNavigateBack = () => {
     if (isAuthenticated && user) {
@@ -48,7 +46,7 @@ export default function NotFound() {
     }
   }
 
-  if (!mounted || isLoading) {
+  if (!hydrated || isLoading) {
     return (
         <AppLoader />
     )

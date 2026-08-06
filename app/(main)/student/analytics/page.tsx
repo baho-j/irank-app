@@ -182,6 +182,36 @@ function ChartCard({
   )
 }
 
+const insightIcon = (type: string, className: string) => {
+  switch (type) {
+    case "achievement":
+      return <Trophy className={className} />
+    case "improvement":
+      return <TrendingUp className={className} />
+    case "concern":
+      return <AlertTriangle className={className} />
+    case "opportunity":
+      return <Lightbulb className={className} />
+    default:
+      return <Eye className={className} />
+  }
+}
+
+const insightColor = (type: string) => {
+  switch (type) {
+    case "achievement":
+      return "text-green-600 bg-green-600/10"
+    case "improvement":
+      return "text-blue-600 bg-blue-600/10"
+    case "concern":
+      return "text-red-600 bg-red-600/10"
+    case "opportunity":
+      return "text-orange-600 bg-orange-600/10"
+    default:
+      return "text-gray-600 bg-gray-600/10"
+  }
+}
+
 function InsightCard({ insight, loading }: { insight?: any; loading: boolean }) {
   if (loading) {
     return (
@@ -202,35 +232,6 @@ function InsightCard({ insight, loading }: { insight?: any; loading: boolean }) 
 
   if (!insight) return null
 
-  const getInsightIcon = (type: string) => {
-    switch (type) {
-      case "achievement":
-        return Trophy
-      case "improvement":
-        return TrendingUp
-      case "concern":
-        return AlertTriangle
-      case "opportunity":
-        return Lightbulb
-      default:
-        return Eye
-    }
-  }
-
-  const getInsightColor = (type: string) => {
-    switch (type) {
-      case "achievement":
-        return "text-green-600 bg-green-600/10"
-      case "improvement":
-        return "text-blue-600 bg-blue-600/10"
-      case "concern":
-        return "text-red-600 bg-red-600/10"
-      case "opportunity":
-        return "text-orange-600 bg-orange-600/10"
-      default:
-        return "text-gray-600 bg-gray-600/10"
-    }
-  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -245,8 +246,8 @@ function InsightCard({ insight, loading }: { insight?: any; loading: boolean }) 
     }
   }
 
-  const Icon = getInsightIcon(insight.type)
-  const colorClass = getInsightColor(insight.type)
+  const icon = insightIcon(insight.type, "h-5 w-5")
+  const colorClass = insightColor(insight.type)
   const priorityClass = getPriorityColor(insight.priority)
 
   return (
@@ -254,7 +255,7 @@ function InsightCard({ insight, loading }: { insight?: any; loading: boolean }) 
       <CardContent className="p-4">
         <div className="flex gap-3">
           <div className={cn("p-2 rounded-full", colorClass)}>
-            <Icon className="h-5 w-5" />
+            {icon}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
@@ -358,19 +359,26 @@ function PartnerCard({ partner, loading }: { partner?: any; loading: boolean }) 
 
 export default function StudentAnalyticsPage() {
   const { token, user } = useAuth()
-  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>({
+  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>(() => ({
     from: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
     to: new Date(),
-  })
+  }))
+
+  // Resolved once per change of range: computing it inline made a new
+  // object each render, which resubscribed every analytics query.
+  const dateWindow = useMemo(() => {
+    const start = dateRange?.from?.getTime()
+    const end = dateRange?.to?.getTime()
+
+    // Both ends come from the picker, which always supplies a full range.
+    return start !== undefined && end !== undefined ? { start, end } : undefined
+  }, [dateRange])
 
   const performanceData = useQuery(
     api.functions.student.analytics.getStudentPerformanceAnalytics,
     token && user?.role === "student" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (365 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       compare_to_previous_period: true,
     } : "skip"
   )
@@ -627,7 +635,7 @@ export default function StudentAnalyticsPage() {
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-6">
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard

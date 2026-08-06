@@ -83,6 +83,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { SCORING_CATEGORIES } from "@/components/tournaments/ballot/scoring-categories";
 import { useNames } from "@/components/tournaments/ballot/use-names";
 import { debateStatusColor, debateStatusIcon } from "@/components/tournaments/ballot/debate-status";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface BallotListItemProps {
   debate: EnrichedDebate;
@@ -95,19 +96,12 @@ interface BallotListItemProps {
 }
 
 export function BallotRow({ debate, userRole, userId, onViewDetails, onEditBallot, onFlagBallot, onUnflagBallot }: BallotListItemProps) {
-  const StatusIcon = debateStatusIcon(debate.status);
+  const statusIcon = debateStatusIcon(debate.status, "h-3 w-3 mr-1");
   const canEdit = userRole === "admin" || (userRole === "volunteer" && debate.judges?.some((j: any) => j._id === userId));
   const canSeeDetails = debate.can_see_full_details || userRole === "admin" || userRole === "volunteer";
   const canFlag = userRole === "admin" || (userRole === "volunteer" && debate.judges?.some((j: any) => j._id === userId));
   const hasFlaggedBallots = debate.has_flagged_ballots || debate.judges?.some((j: any) => j.is_flagged);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkIsMobile = () => setIsMobile(window.innerWidth < 768);
-    checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    return () => window.removeEventListener('resize', checkIsMobile);
-  }, []);
+  const isMobile = useIsMobile();
 
   const handleEditClick = () => {
     if (isMobile) {
@@ -124,7 +118,7 @@ export function BallotRow({ debate, userRole, userId, onViewDetails, onEditBallo
           <div className="flex items-center gap-2">
             <span className="font-medium">{debate.room_name}</span>
             <Badge variant="secondary" className={debateStatusColor(debate.status)}>
-              <StatusIcon className="h-3 w-3 mr-1" />
+              {statusIcon}
               {debate.status}
             </Badge>
             {hasFlaggedBallots && (
@@ -266,20 +260,13 @@ export function BallotRow({ debate, userRole, userId, onViewDetails, onEditBallo
 }
 
 export function BallotCard({ debate, userRole, userId, onViewDetails, onEditBallot, onFlagBallot, onUnflagBallot }: BallotListItemProps) {
-  const StatusIcon = debateStatusIcon(debate.status);
+  const statusIcon = debateStatusIcon(debate.status, "h-3 w-3 mr-1");
   const canEdit = userRole === "admin" || (userRole === "volunteer" && debate.judges?.some((j: any) => j._id === userId));
   const canSeeDetails = debate.can_see_full_details || userRole === "admin" || userRole === "volunteer";
   const canFlag = userRole === "admin" || (userRole === "volunteer" && debate.judges?.some((j: any) => j._id === userId));
   const hasFlaggedBallots = debate.has_flagged_ballots || debate.judges?.some((j: any) => j.is_flagged);
   const submissionProgress = debate.judges?.length > 0 ? (debate.final_submissions_count || 0) / debate.judges.length * 100 : 0;
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkIsMobile = () => setIsMobile(window.innerWidth < 768);
-    checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    return () => window.removeEventListener('resize', checkIsMobile);
-  }, []);
+  const isMobile = useIsMobile();
 
   const handleEditClick = () => {
     if (isMobile) {
@@ -296,7 +283,7 @@ export function BallotCard({ debate, userRole, userId, onViewDetails, onEditBall
           <div className="flex items-center gap-3">
             <CardTitle className="text-lg">{debate.room_name}</CardTitle>
             <Badge variant="secondary" className={debateStatusColor(debate.status)}>
-              <StatusIcon className="h-3 w-3 mr-1" />
+              {statusIcon}
               {debate.status}
             </Badge>
             {hasFlaggedBallots && (

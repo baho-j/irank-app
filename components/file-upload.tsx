@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Button } from "@/components/ui/button"
@@ -132,7 +132,8 @@ export function FileUpload({
         }
     }
 
-    const fileInputId = `file-upload-${Math.random().toString(36).slice(2, 11)}`
+    // Stable across server and client so the label stays bound to the input.
+    const fileInputId = useId()
 
     if (children) {
         return (

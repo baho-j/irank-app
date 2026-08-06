@@ -218,311 +218,158 @@ export function SimpleLocationMultiSelector({
                                               className,
                                               leagueType
                                             }: SimpleLocationMultiSelectorProps) {
-  const [loading, setLoading] = useState(true)
-  const [countries, setCountries] = useState<LocationOption[]>([])
-  const [provinces, setProvinces] = useState<LocationOption[]>([])
-  const [districts, setDistricts] = useState<LocationOption[]>([])
-  const [sectors, setSectors] = useState<LocationOption[]>([])
-  const [cells, setCells] = useState<LocationOption[]>([])
-  const [villages, setVillages] = useState<LocationOption[]>([])
-
-  useEffect(() => {
-    const loadCountries = () => {
-      try {
-        if (leagueType === "Local") {
-          const rwandaCountry = Country.getCountryByCode("RW")
-          if (rwandaCountry) {
-            setCountries([{ value: "RW", label: rwandaCountry.name }])
-            if (selectedLocations.countries.length === 0) {
-              onLocationsChange({
-                ...selectedLocations,
-                countries: ["RW"]
-              })
-            }
-          }
-        } else {
-          const countryData = Country.getAllCountries().map(country => ({
-            value: country.isoCode,
-            label: country.name
-          }))
-          setCountries(countryData)
-        }
-      } catch (error) {
-        console.error("Error loading countries:", error)
-      } finally {
-        setLoading(false)
-      }
+  // Every list below the country is a pure function of what is selected above
+  // it, so it is derived rather than copied into state by an effect. Only the
+  // pruning of now-invalid selections is a real side effect, and that is one
+  // effect at the end rather than one per level.
+  const countries = useMemo<LocationOption[]>(() => {
+    if (leagueType === "Local") {
+      const rwanda = Country.getCountryByCode("RW")
+      return rwanda ? [{ value: "RW", label: rwanda.name }] : []
     }
-    loadCountries()
+
+    return Country.getAllCountries()
+      .map(country => ({ value: country.isoCode, label: country.name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
   }, [leagueType])
 
-  useEffect(() => {
-    if (selectedLocations.countries.length === 0) {
-      setProvinces([])
-      return
-    }
+  const unique = (options: LocationOption[]) =>
+    options
+      .filter((item, index, self) => index === self.findIndex(t => t.value === item.value))
+      .sort((a, b) => a.label.localeCompare(b.label))
 
-    const loadProvinces = async () => {
-      try {
-        const provinceData: LocationOption[] = []
+  const provinces = useMemo<LocationOption[]>(() => {
+    const data: LocationOption[] = []
 
-        for (const countryCode of selectedLocations.countries) {
-          if (countryCode === "RW" && includeRwandaDetails) {
-            const rwandaProvinces = Provinces().map(name => ({
-              value: `${countryCode}-${name}`,
-              label: name
-            }))
-            provinceData.push(...rwandaProvinces)
-          } else {
-            const states = State.getStatesOfCountry(countryCode)
-            const stateData = states.map(state => ({
-              value: `${countryCode}-${state.isoCode}`,
-              label: state.name
-            }))
-            provinceData.push(...stateData)
-          }
-        }
-
-        const uniqueProvinces = provinceData.filter((item, index, self) =>
-          index === self.findIndex(t => t.value === item.value)
-        ).sort((a, b) => a.label.localeCompare(b.label))
-
-        setProvinces(uniqueProvinces)
-
-        const validProvinces = uniqueProvinces.map(p => p.value)
-        const filteredSelectedProvinces = selectedLocations.provinces.filter(p =>
-          validProvinces.includes(p)
-        )
-
-        if (filteredSelectedProvinces.length !== selectedLocations.provinces.length) {
-          onLocationsChange({
-            ...selectedLocations,
-            provinces: filteredSelectedProvinces,
-            districts: [],
-            sectors: [],
-            cells: [],
-            villages: []
-          })
-        }
-      } catch (error) {
-        console.error("Error loading provinces:", error)
+    for (const countryCode of selectedLocations.countries) {
+      if (countryCode === "RW" && includeRwandaDetails) {
+        data.push(...Provinces().map(name => ({ value: `${countryCode}-${name}`, label: name })))
+      } else {
+        data.push(...State.getStatesOfCountry(countryCode).map(state => ({
+          value: `${countryCode}-${state.isoCode}`,
+          label: state.name,
+        })))
       }
     }
 
-    loadProvinces()
+    return unique(data)
   }, [selectedLocations.countries, includeRwandaDetails])
 
-  useEffect(() => {
-    if (selectedLocations.provinces.length === 0) {
-      setDistricts([])
-      return
-    }
+  const districts = useMemo<LocationOption[]>(() => {
+    const data: LocationOption[] = []
 
-    const loadDistricts = async () => {
-      try {
-        const districtData: LocationOption[] = []
+    for (const provinceValue of selectedLocations.provinces) {
+      const [countryCode, ...provinceParts] = provinceValue.split('-')
+      const province = provinceParts.join('-')
 
-        for (const provinceValue of selectedLocations.provinces) {
-          const [countryCode, ...provinceParts] = provinceValue.split('-')
-          const province = provinceParts.join('-')
-
-          if (countryCode === "RW" && includeRwandaDetails) {
-            const rwandaDistricts = Districts(province).map(name => ({
-              value: `${provinceValue}-${name}`,
-              label: name
-            }))
-            districtData.push(...rwandaDistricts)
-          } else {
-            const cities = City.getCitiesOfState(countryCode, province)
-            const cityData = cities.map(city => ({
-              value: `${provinceValue}-${city.name}`,
-              label: city.name
-            }))
-            districtData.push(...cityData)
-          }
-        }
-
-        const uniqueDistricts = districtData.filter((item, index, self) =>
-          index === self.findIndex(t => t.value === item.value)
-        ).sort((a, b) => a.label.localeCompare(b.label))
-
-        setDistricts(uniqueDistricts)
-
-        const validDistricts = uniqueDistricts.map(d => d.value)
-        const filteredSelectedDistricts = selectedLocations.districts.filter(d =>
-          validDistricts.includes(d)
-        )
-
-        if (filteredSelectedDistricts.length !== selectedLocations.districts.length) {
-          onLocationsChange({
-            ...selectedLocations,
-            districts: filteredSelectedDistricts,
-            sectors: [],
-            cells: [],
-            villages: []
-          })
-        }
-      } catch (error) {
-        console.error("Error loading districts:", error)
+      if (countryCode === "RW" && includeRwandaDetails) {
+        data.push(...Districts(province).map(name => ({
+          value: `${provinceValue}-${name}`,
+          label: name,
+        })))
+      } else {
+        data.push(...City.getCitiesOfState(countryCode, province).map(city => ({
+          value: `${provinceValue}-${city.name}`,
+          label: city.name,
+        })))
       }
     }
 
-    loadDistricts()
+    return unique(data)
   }, [selectedLocations.provinces, includeRwandaDetails])
 
-  useEffect(() => {
-    if (selectedLocations.districts.length === 0 || !includeRwandaDetails) {
-      setSectors([])
-      return
-    }
+  const sectors = useMemo<LocationOption[]>(() => {
+    if (!includeRwandaDetails) return []
 
-    const loadSectors = async () => {
-      try {
-        const sectorData: LocationOption[] = []
+    const data: LocationOption[] = []
 
-        for (const districtValue of selectedLocations.districts) {
-          const parts = districtValue.split('-')
-          if (parts[0] === "RW" && parts.length >= 3) {
-            const province = parts[1]
-            const district = parts[2]
+    for (const districtValue of selectedLocations.districts) {
+      const parts = districtValue.split('-')
 
-            const rwandaSectors = Sectors(province, district).map(name => ({
-              value: `${districtValue}-${name}`,
-              label: name
-            }))
-            sectorData.push(...rwandaSectors)
-          }
-        }
-
-        const uniqueSectors = sectorData.filter((item, index, self) =>
-          index === self.findIndex(t => t.value === item.value)
-        ).sort((a, b) => a.label.localeCompare(b.label))
-
-        setSectors(uniqueSectors)
-
-        const validSectors = uniqueSectors.map(s => s.value)
-        const filteredSelectedSectors = selectedLocations.sectors.filter(s =>
-          validSectors.includes(s)
-        )
-
-        if (filteredSelectedSectors.length !== selectedLocations.sectors.length) {
-          onLocationsChange({
-            ...selectedLocations,
-            sectors: filteredSelectedSectors,
-            cells: [],
-            villages: []
-          })
-        }
-      } catch (error) {
-        console.error("Error loading sectors:", error)
+      if (parts[0] === "RW" && parts.length >= 3) {
+        data.push(...Sectors(parts[1], parts[2]).map(name => ({
+          value: `${districtValue}-${name}`,
+          label: name,
+        })))
       }
     }
 
-    loadSectors()
+    return unique(data)
   }, [selectedLocations.districts, includeRwandaDetails])
 
-  useEffect(() => {
-    if (selectedLocations.sectors.length === 0 || !includeRwandaDetails) {
-      setCells([])
-      return
-    }
+  const cells = useMemo<LocationOption[]>(() => {
+    if (!includeRwandaDetails) return []
 
-    const loadCells = async () => {
-      try {
-        const cellData: LocationOption[] = []
+    const data: LocationOption[] = []
 
-        for (const sectorValue of selectedLocations.sectors) {
-          const parts = sectorValue.split('-')
-          if (parts[0] === "RW" && parts.length >= 4) {
-            const province = parts[1]
-            const district = parts[2]
-            const sector = parts[3]
+    for (const sectorValue of selectedLocations.sectors) {
+      const parts = sectorValue.split('-')
 
-            const rwandaCells = Cells(province, district, sector).map(name => ({
-              value: `${sectorValue}-${name}`,
-              label: name
-            }))
-            cellData.push(...rwandaCells)
-          }
-        }
-
-        const uniqueCells = cellData.filter((item, index, self) =>
-          index === self.findIndex(t => t.value === item.value)
-        ).sort((a, b) => a.label.localeCompare(b.label))
-
-        setCells(uniqueCells)
-
-        const validCells = uniqueCells.map(c => c.value)
-        const filteredSelectedCells = selectedLocations.cells.filter(c =>
-          validCells.includes(c)
-        )
-
-        if (filteredSelectedCells.length !== selectedLocations.cells.length) {
-          onLocationsChange({
-            ...selectedLocations,
-            cells: filteredSelectedCells,
-            villages: []
-          })
-        }
-      } catch (error) {
-        console.error("Error loading cells:", error)
+      if (parts[0] === "RW" && parts.length >= 4) {
+        data.push(...Cells(parts[1], parts[2], parts[3]).map(name => ({
+          value: `${sectorValue}-${name}`,
+          label: name,
+        })))
       }
     }
 
-    loadCells()
+    return unique(data)
   }, [selectedLocations.sectors, includeRwandaDetails])
 
-  // Load villages when cells change (Rwanda only)
-  useEffect(() => {
-    if (selectedLocations.cells.length === 0 || !includeRwandaDetails) {
-      setVillages([])
-      return
-    }
+  const villages = useMemo<LocationOption[]>(() => {
+    if (!includeRwandaDetails) return []
 
-    const loadVillages = async () => {
-      try {
-        const villageData: LocationOption[] = []
+    const data: LocationOption[] = []
 
-        for (const cellValue of selectedLocations.cells) {
-          const parts = cellValue.split('-')
-          if (parts[0] === "RW" && parts.length >= 5) {
-            const province = parts[1]
-            const district = parts[2]
-            const sector = parts[3]
-            const cell = parts[4]
+    for (const cellValue of selectedLocations.cells) {
+      const parts = cellValue.split('-')
 
-            const rwandaVillages = Villages(province, district, sector, cell).map(name => ({
-              value: `${cellValue}-${name}`,
-              label: name
-            }))
-            villageData.push(...rwandaVillages)
-          }
-        }
-
-        const uniqueVillages = villageData.filter((item, index, self) =>
-          index === self.findIndex(t => t.value === item.value)
-        ).sort((a, b) => a.label.localeCompare(b.label))
-
-        setVillages(uniqueVillages)
-
-        const validVillages = uniqueVillages.map(v => v.value)
-        const filteredSelectedVillages = selectedLocations.villages.filter(v =>
-          validVillages.includes(v)
-        )
-
-        if (filteredSelectedVillages.length !== selectedLocations.villages.length) {
-          onLocationsChange({
-            ...selectedLocations,
-            villages: filteredSelectedVillages
-          })
-        }
-      } catch (error) {
-        console.error("Error loading villages:", error)
+      if (parts[0] === "RW" && parts.length >= 5) {
+        data.push(...Villages(parts[1], parts[2], parts[3], parts[4]).map(name => ({
+          value: `${cellValue}-${name}`,
+          label: name,
+        })))
       }
     }
 
-    loadVillages()
+    return unique(data)
   }, [selectedLocations.cells, includeRwandaDetails])
+
+  // A local league is always Rwanda, so it is selected on the caller's behalf.
+  useEffect(() => {
+    if (leagueType === "Local" && selectedLocations.countries.length === 0) {
+      onLocationsChange({ ...selectedLocations, countries: ["RW"] })
+    }
+  }, [leagueType, selectedLocations, onLocationsChange])
+
+  // Drops selections that the levels above no longer permit, and clears every
+  // level beneath the first one that changed.
+  useEffect(() => {
+    const levels = [
+      { key: "provinces", options: provinces },
+      { key: "districts", options: districts },
+      { key: "sectors", options: sectors },
+      { key: "cells", options: cells },
+      { key: "villages", options: villages },
+    ] as const
+
+    for (let index = 0; index < levels.length; index += 1) {
+      const { key, options } = levels[index]
+      const valid = new Set(options.map(option => option.value))
+      const selected = selectedLocations[key]
+      const kept = selected.filter(value => valid.has(value))
+
+      if (kept.length === selected.length) continue
+
+      const cleared = Object.fromEntries(
+        levels.slice(index + 1).map(level => [level.key, [] as string[]])
+      )
+
+      onLocationsChange({ ...selectedLocations, [key]: kept, ...cleared })
+      return
+    }
+  }, [provinces, districts, sectors, cells, villages, selectedLocations, onLocationsChange])
+
 
   const isRwandaSelected = selectedLocations.countries.includes("RW")
 
@@ -542,7 +389,6 @@ export function SimpleLocationMultiSelector({
             cells: [],
             villages: []
           })}
-          loading={loading}
           disabled={leagueType === "Local"}
         />
       </div>

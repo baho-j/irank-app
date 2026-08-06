@@ -121,19 +121,23 @@ export function FlagBallotDialog({ debate, isOpen, onClose, onFlag, userRole }: 
     }
   }, [debate, userRole]);
 
-  useEffect(() => {
-    if (isOpen && availableBallots.length > 0) {
-      if (userRole === "volunteer") {
-        setSelectedBallots([availableBallots[0].id]);
-      } else {
+  // Only on opening. Recomputing whenever the ballots change would discard a
+  // selection the user had already made while the dialog was open.
+  const [openedFor, setOpenedFor] = useState(false);
 
-        const unflaggedBallots = availableBallots
-          .filter((ballot: { isAlreadyFlagged: any; }) => !ballot.isAlreadyFlagged)
-          .map((ballot: { id: any; }) => ballot.id);
-        setSelectedBallots(unflaggedBallots);
-      }
+  if (isOpen !== openedFor) {
+    setOpenedFor(isOpen);
+
+    if (isOpen && availableBallots.length > 0) {
+      setSelectedBallots(
+        userRole === "volunteer"
+          ? [availableBallots[0].id]
+          : availableBallots
+            .filter((ballot: { isAlreadyFlagged: any }) => !ballot.isAlreadyFlagged)
+            .map((ballot: { id: any }) => ballot.id)
+      );
     }
-  }, [isOpen, availableBallots, userRole]);
+  }
 
   const handleBallotToggle = (ballotId: string, checked: boolean) => {
     if (checked) {

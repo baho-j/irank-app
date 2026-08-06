@@ -25,6 +25,7 @@ import { TournamentTeams } from "@/components/tournaments/tournament-teams";
 import TournamentPairings from "@/components/tournaments/tournament-pairing";
 import TournamentRankings from "@/components/tournaments/tournament-ranking";
 import TournamentBallots from "@/components/tournaments/tournament-ballot";
+import { useLocationHash } from "@/hooks/use-location-hash";
 
 const navigationItems = [
   {
@@ -199,7 +200,10 @@ export default function TournamentPage() {
   const { user, token } = useAuth()
   const router = useRouter()
 
-  const [activeSection, setActiveSection] = useState("overview")
+  // The section lives in the URL fragment, so back and forward move between
+  // sections and a shared link opens on the right one.
+  const [hash, setHash] = useLocationHash()
+  const activeSection = navigationItems.some(item => item.id === hash) ? hash : "overview"
 
   const { id } = useParams();
   const paramSlug = Array.isArray(id) ? id[0] : id;
@@ -210,20 +214,10 @@ export default function TournamentPage() {
     slug ? { slug } : "skip"
   );
 
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '')
-    if (hash && navigationItems.some(item => item.id === hash)) {
-      setActiveSection(hash)
-    }
-  }, [])
-
   const handleSectionChange = (section: string) => {
 
     if (tournamentResponse?.success) {
-      setActiveSection(section)
-      const url = new URL(window.location.href)
-      url.hash = section
-      window.history.replaceState({}, '', url.toString())
+      setHash(section)
     }
   }
 

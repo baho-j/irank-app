@@ -104,7 +104,6 @@ export function DebateTimer({ debate, token, tournament, position = "first", onU
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [, setAudioChunks] = useState<Blob[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -152,8 +151,9 @@ export function DebateTimer({ debate, token, tournament, position = "first", onU
         mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
       });
 
+      // Held locally rather than in state: the buffer is only read when the
+      // recorder stops, and state must not be mutated in place.
       const chunks: Blob[] = [];
-      setAudioChunks(chunks);
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {

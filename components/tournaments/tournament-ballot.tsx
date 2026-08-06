@@ -94,6 +94,7 @@ import { useNames } from "@/components/tournaments/ballot/use-names";
 import { useOffline } from "@/hooks/use-offline";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface TournamentBallotsProps {
   tournament: BallotTournament;
@@ -132,7 +133,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
   const [biasCheckResults, setBiasCheckResults] = useState<Record<string, any>>({});
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
   const [argumentFlow, setArgumentFlow] = useState<any[]>(debate.argument_flow || []);
   const [factChecks, setFactChecks] = useState<any[]>(debate.fact_checks || []);
   const [sharedNotes, setSharedNotes] = useState<any[]>(debate.shared_notes || []);
@@ -140,19 +141,26 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
   const [selectedJudgeId, setSelectedJudgeId] = useState<string>("");
   const [expandedSpeaker, setExpandedSpeaker] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (userRole === "admin" && debate.judges?.length > 0 && !selectedJudgeId) {
-      const firstJudge = debate.judges[0];
-      setSelectedJudgeId(
-        typeof firstJudge === "string" ? firstJudge : firstJudge._id as Id<"users">
-      );
-    }
-  }, [userRole, debate.judges, selectedJudgeId]);
+  // Defaults resolved while rendering rather than corrected afterwards, so
+  // the first paint already shows the right judge and team.
+  const firstJudge = debate.judges?.[0];
+  const defaultJudgeId =
+    userRole === "admin" && firstJudge
+      ? ((typeof firstJudge === "string" ? firstJudge : firstJudge._id) as string)
+      : "";
 
-  useEffect(() => {
-    if (userRole === "admin" && selectedJudgeId && debate.judges_ballots) {
+  const activeJudgeId = selectedJudgeId || defaultJudgeId;
+
+  // Loaded when the coordinator switches judge, not on every update of the
+  // debate record, so a ballot being corrected is not reset mid-edit.
+  const [loadedJudgeId, setLoadedJudgeId] = useState<string | null>(null);
+
+  if (userRole === "admin" && activeJudgeId && activeJudgeId !== loadedJudgeId) {
+    setLoadedJudgeId(activeJudgeId);
+
+    if (debate.judges_ballots) {
       const selectedJudgeBallot = debate.judges_ballots.find(
-        (jb: any) => jb.judge_id === selectedJudgeId
+        (jb: any) => jb.judge_id === activeJudgeId
       )?.ballot;
 
       if (selectedJudgeBallot) {
@@ -179,7 +187,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
         setNotes("");
       }
     }
-  }, [userRole, selectedJudgeId, debate.judges_ballots]);
+  }
 
   const isHeadJudge = debate.head_judge_id === debate.my_submission?.judge_id;
   const canEdit = ballot?.submission_state !== "submitted";
@@ -203,31 +211,28 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
     return speakerNamesMap[speakerId] || `Speaker ${speakerId.slice(-4)}`;
   };
 
+  const activeTeam = selectedTeam || debate.proposition_team?._id || "";
+
   const getSelectedTeamSpeakers = () => {
-    if (!selectedTeam) return [];
-    if (selectedTeam === debate.proposition_team?._id) {
+    if (!activeTeam) return [];
+    if (activeTeam === debate.proposition_team?._id) {
       return debate.proposition_team?.members || [];
-    } else if (selectedTeam === debate.opposition_team?._id) {
+    } else if (activeTeam === debate.opposition_team?._id) {
       return debate.opposition_team?.members || [];
     }
     return [];
   };
 
-  useEffect(() => {
-    if (!selectedTeam && debate.proposition_team) {
-      setSelectedTeam(debate.proposition_team._id);
-    }
-  }, [debate, selectedTeam]);
 
-  useEffect(() => {
-    const checkIsMobile = () => setIsMobile(window.innerWidth < 768);
-    checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    return () => window.removeEventListener('resize', checkIsMobile);
-  }, []);
+  // Loaded when a different ballot is opened, not whenever the record updates.
+  // The ballot is a live query, so re-seeding on every update would discard
+  // marks the judge had entered but not yet saved.
+  const [loadedBallotId, setLoadedBallotId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (ballot) {
+  if (ballot && ballot._id !== loadedBallotId) {
+    setLoadedBallotId(ballot._id);
+
+    {
       const loadedScores: Record<string, SpeechScore> = {};
       ballot.speaker_scores?.forEach((score: any) => {
         loadedScores[score.speaker_id] = {
@@ -246,7 +251,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
       setWinningPosition(ballot.winning_position || "");
       setNotes(ballot.notes || "");
     }
-  }, [ballot]);
+  }
 
   const updateScore = (speakerId: string, category: keyof SpeechScore, value: number) => {
     if (!canEdit) return;
@@ -463,7 +468,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
       if (userRole === "admin") {
         const existingBallot = debate.judges_ballots?.find(
-          (jb: any) => jb.judge_id === selectedJudgeId
+          (jb: any) => jb.judge_id === activeJudgeId
         )?.ballot;
 
         if (existingBallot) {
@@ -486,7 +491,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
             type: "admin_submit",
             token,
             debate_id: debate._id,
-            judge_id: selectedJudgeId as Id<"users">,
+            judge_id: activeJudgeId as Id<"users">,
             winning_team_id: teamWinner as Id<"teams">,
             winning_position: winningPosition as "proposition" | "opposition",
             speaker_scores: speakerScores,
@@ -551,7 +556,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
 
   const availableTeams = getAvailableTeams();
   const selectedTeamSpeakers = getSelectedTeamSpeakers();
-  const selectedTeamData = availableTeams.find(t => t.id === selectedTeam);
+  const selectedTeamData = availableTeams.find(t => t.id === activeTeam);
 
   if (isMobile) {
     return (
@@ -575,7 +580,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
           <div className="flex-1 overflow-hidden">
             <Tabs defaultValue="scoring" className="w-full h-full flex flex-col">
               <div className="px-4 pb-2">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
                   <TabsTrigger value="scoring">Scoring</TabsTrigger>
                   <TabsTrigger value="arguments">Arguments</TabsTrigger>
                   <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -590,7 +595,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     {availableTeams.map((team) => (
                       <Button
                         key={team.id}
-                        variant={selectedTeam === team.id ? "default" : "outline"}
+                        variant={activeTeam === team.id ? "default" : "outline"}
                         onClick={() => setSelectedTeam(team.id)}
                         className="p-3 h-auto"
                       >
@@ -605,7 +610,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                   </div>
 
 
-                  {selectedTeam && selectedTeamData && (
+                  {activeTeam && selectedTeamData && (
                     <>
 
                       <SpeakerPositionManager
@@ -614,7 +619,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                         onUpdatePositions={setSpeakerPositions}
                         tournament={tournament}
                         debate={debate}
-                        teamId={selectedTeam}
+                        teamId={activeTeam}
                         teamName={selectedTeamData.name}
                       />
 
@@ -625,7 +630,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                           <Textarea
                             placeholder="Overall team performance feedback..."
                             value={teamComments[selectedTeam] || ""}
-                            onChange={(e) => updateTeamComment(selectedTeam, e.target.value)}
+                            onChange={(e) => updateTeamComment(activeTeam, e.target.value)}
                             disabled={!canEdit}
                             rows={2}
                             className="text-sm"
@@ -656,7 +661,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {SCORING_CATEGORIES.map((category) => {
                                   const CategoryIcon = category.icon;
                                   return (
@@ -772,7 +777,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     <Card className="p-4">
                       <div className="space-y-3">
                         <Label className="text-base font-medium">Submitting as Judge</Label>
-                        <Select value={selectedJudgeId} onValueChange={setSelectedJudgeId}>
+                        <Select value={activeJudgeId} onValueChange={setSelectedJudgeId}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select judge" />
                           </SelectTrigger>
@@ -799,7 +804,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                         </Select>
                         {(() => {
                           const selectedJudgeBallot = debate.judges_ballots?.find(
-                            (jb: any) => jb.judge_id === selectedJudgeId
+                            (jb: any) => jb.judge_id === activeJudgeId
                           )?.ballot;
                           return selectedJudgeBallot ? (
                             <Alert>
@@ -901,7 +906,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     isValidating ||
                     availableTeams.length === 0 ||
                     (userRole === "volunteer" && !canEdit) ||
-                    (userRole === "admin" && !selectedJudgeId)
+                    (userRole === "admin" && !activeJudgeId)
                   }
                   className="w-full"
                 >
@@ -942,7 +947,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                 {availableTeams.map((team) => (
                   <Button
                     key={team.id}
-                    variant={selectedTeam === team.id ? "default" : "outline"}
+                    variant={activeTeam === team.id ? "default" : "outline"}
                     onClick={() => setSelectedTeam(team.id)}
                     className="p-4 h-auto"
                   >
@@ -960,7 +965,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
               </div>
 
 
-              {selectedTeam && selectedTeamData && (
+              {activeTeam && selectedTeamData && (
                 <>
 
                   <Card className="p-4">
@@ -969,7 +974,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                       <Textarea
                         placeholder="Overall team performance, strategy, and coordination..."
                         value={teamComments[selectedTeam] || ""}
-                        onChange={(e) => updateTeamComment(selectedTeam, e.target.value)}
+                        onChange={(e) => updateTeamComment(activeTeam, e.target.value)}
                         disabled={!canEdit}
                         rows={3}
                       />
@@ -1192,7 +1197,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                 <Card className="p-4">
                   <div className="space-y-3">
                     <Label className="text-base font-medium">Submitting as Judge</Label>
-                    <Select value={selectedJudgeId} onValueChange={setSelectedJudgeId}>
+                    <Select value={activeJudgeId} onValueChange={setSelectedJudgeId}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select judge" />
                       </SelectTrigger>
@@ -1219,7 +1224,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                     </Select>
                     {(() => {
                       const selectedJudgeBallot = debate.judges_ballots?.find(
-                        (jb: any) => jb.judge_id === selectedJudgeId
+                        (jb: any) => jb.judge_id === activeJudgeId
                       )?.ballot;
                       return selectedJudgeBallot ? (
                         <Alert>
@@ -1244,14 +1249,14 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                 </Card>
               )}
 
-              {selectedTeam && selectedTeamData && (
+              {activeTeam && selectedTeamData && (
                 <SpeakerPositionManager
                   speakers={selectedTeamSpeakers.map((id: string) => ({ id, name: getSpeakerName(id) }))}
                   positions={speakerPositions}
                   onUpdatePositions={setSpeakerPositions}
                   tournament={tournament}
                   debate={debate}
-                  teamId={selectedTeam}
+                  teamId={activeTeam}
                   teamName={selectedTeamData.name}
                 />
               )}
@@ -1340,7 +1345,7 @@ function JudgingInterface({ debate, ballot, userId, onSubmitBallot, tournament, 
                   isValidating ||
                   availableTeams.length === 0 ||
                   (userRole === "volunteer" && !canEdit) ||
-                  (userRole === "admin" && !selectedJudgeId)
+                  (userRole === "admin" && !activeJudgeId)
                 }
                 className="w-full"
               >
@@ -1393,7 +1398,7 @@ export default function TournamentBallots({
   const [showFlagDialog, setShowFlagDialog] = useState(false);
   const [flaggingDebate, setFlaggingDebate] = useState<any>(null);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -1447,18 +1452,15 @@ export default function TournamentBallots({
   const flagBallotVolunteer = useMutation(api.functions.volunteers.ballots.flagBallot);
   const unflagBallot = useMutation(api.functions.admin.ballots.unflagBallot);
 
-  useEffect(() => {
-    const checkIsMobile = () => setIsMobile(window.innerWidth < 768);
-    checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    return () => window.removeEventListener('resize', checkIsMobile);
-  }, []);
 
-  useEffect(() => {
-    if (!isMobile && ballots && ballots.length > 20) {
-      setViewMode("table");
-    }
-  }, [isMobile, ballots]);
+  // A long list defaults to the table on desktop, once. The user can still
+  // switch back, and the choice is not overridden on the next render.
+  const [defaultedForLongList, setDefaultedForLongList] = useState(false);
+
+  if (!defaultedForLongList && !isMobile && ballots && ballots.length > 20) {
+    setDefaultedForLongList(true);
+    setViewMode("table");
+  }
 
   const availableRounds = useMemo(() => {
     const totalRounds = tournament.prelim_rounds + tournament.elimination_rounds;
@@ -1852,7 +1854,7 @@ export default function TournamentBallots({
             </Drawer>
           ) : (
             <Dialog open={showJudgingInterface} onOpenChange={setShowJudgingInterface}>
-              <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden">
+              <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden max-sm:overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <Edit3 className="h-5 w-5" />

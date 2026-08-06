@@ -6,15 +6,15 @@ import dynamic from "next/dynamic";
 import AppLoader from "@/components/app-loader";
 import React from "react";
 
-export default function SchoolAdminSignUp() {
+const SchoolAdminSignUpForm = dynamic(() =>
+    import("@/components/auth/signup/school-signup-form").then(mod => mod.SchoolAdminSignUpForm),
+  {
+    loading: () => <div><AppLoader /></div>,
+    ssr: false,
+  }
+)
 
-  const SchoolAdminSignUpForm = dynamic(() =>
-      import("@/components/auth/signup/school-signup-form").then(mod => mod.SchoolAdminSignUpForm),
-    {
-      loading: () => <div><AppLoader /></div>,
-      ssr: false,
-    }
-  )
+export default function SchoolAdminSignUp() {
   return (
     <div className="flex min-h-screen dark:bg-gray-900">
 

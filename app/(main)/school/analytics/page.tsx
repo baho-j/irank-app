@@ -204,6 +204,53 @@ function ChartCard({
   )
 }
 
+const achievementIcon = (iconName: string, className: string) => {
+  switch (iconName) {
+    case "trophy":
+      return <Trophy className={className} />
+    case "star":
+      return <Star className={className} />
+    case "calendar":
+      return <Calendar className={className} />
+    case "crown":
+      return <Crown className={className} />
+    case "users":
+      return <Users className={className} />
+    default:
+      return <Medal className={className} />
+  }
+}
+
+const insightIcon = (type: string, className: string) => {
+  switch (type) {
+    case "achievement":
+      return <Trophy className={className} />
+    case "improvement":
+      return <TrendingUp className={className} />
+    case "concern":
+      return <AlertTriangle className={className} />
+    case "opportunity":
+      return <Lightbulb className={className} />
+    default:
+      return <Info className={className} />
+  }
+}
+
+const insightColor = (type: string) => {
+  switch (type) {
+    case "achievement":
+      return "text-green-600 bg-green-600/10"
+    case "improvement":
+      return "text-blue-600 bg-blue-600/10"
+    case "concern":
+      return "text-red-600 bg-red-600/10"
+    case "opportunity":
+      return "text-orange-600 bg-orange-600/10"
+    default:
+      return "text-gray-600 bg-gray-600/10"
+  }
+}
+
 function InsightCard({ insight, loading }: { insight?: any; loading: boolean }) {
   if (loading) {
     return (
@@ -224,45 +271,15 @@ function InsightCard({ insight, loading }: { insight?: any; loading: boolean }) 
 
   if (!insight) return null
 
-  const getInsightIcon = (type: string) => {
-    switch (type) {
-      case "achievement":
-        return Trophy
-      case "improvement":
-        return TrendingUp
-      case "concern":
-        return AlertTriangle
-      case "opportunity":
-        return Lightbulb
-      default:
-        return Info
-    }
-  }
-
-  const getInsightColor = (type: string) => {
-    switch (type) {
-      case "achievement":
-        return "text-green-600 bg-green-600/10"
-      case "improvement":
-        return "text-blue-600 bg-blue-600/10"
-      case "concern":
-        return "text-red-600 bg-red-600/10"
-      case "opportunity":
-        return "text-orange-600 bg-orange-600/10"
-      default:
-        return "text-gray-600 bg-gray-600/10"
-    }
-  }
-
-  const Icon = getInsightIcon(insight.type)
-  const colorClass = getInsightColor(insight.type)
+  const icon = insightIcon(insight.type, "h-5 w-5")
+  const colorClass = insightColor(insight.type)
 
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex gap-3">
           <div className={cn("p-2 rounded-full", colorClass)}>
-            <Icon className="h-5 w-5" />
+            {icon}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
@@ -405,24 +422,10 @@ function AchievementBadge({ achievement, loading }: { achievement?: any; loading
     }
   }
 
-  const getIcon = (iconName: string) => {
-    switch (iconName) {
-      case "trophy":
-        return Trophy
-      case "star":
-        return Star
-      case "calendar":
-        return Calendar
-      case "crown":
-        return Crown
-      case "users":
-        return Users
-      default:
-        return Medal
-    }
-  }
-
-  const Icon = getIcon(achievement.icon)
+  const icon = achievementIcon(
+    achievement.icon,
+    cn("h-5 w-5", achievement.criteria_met ? "text-white" : "text-primary")
+  )
 
   return (
     <div className={cn(
@@ -433,10 +436,7 @@ function AchievementBadge({ achievement, loading }: { achievement?: any; loading
         "p-2 rounded",
         achievement.criteria_met ? "bg-white/20" : "bg-primary/10"
       )}>
-        <Icon className={cn(
-          "h-5 w-5",
-          achievement.criteria_met ? "text-white" : "text-primary"
-        )} />
+        {icon}
       </div>
       <div className="flex-1 min-w-0">
         <h4 className={cn(
@@ -466,20 +466,27 @@ function AchievementBadge({ achievement, loading }: { achievement?: any; loading
 
 export default function SchoolAnalyticsPage() {
   const { token, user } = useAuth()
-  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>({
+  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>(() => ({
     from: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
     to: new Date(),
-  })
+  }))
   const [activeTab, setActiveTab] = useState("overview")
+
+  // Resolved once per change of range: computing it inline made a new
+  // object each render, which resubscribed every analytics query.
+  const dateWindow = useMemo(() => {
+    const start = dateRange?.from?.getTime()
+    const end = dateRange?.to?.getTime()
+
+    // Both ends come from the picker, which always supplies a full range.
+    return start !== undefined && end !== undefined ? { start, end } : undefined
+  }, [dateRange])
 
   const performanceData = useQuery(
     api.functions.school.analytics.getSchoolPerformanceAnalytics,
     token && user?.role === "school_admin" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (90 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       compare_to_previous_period: true,
     } : "skip"
   )
@@ -488,10 +495,7 @@ export default function SchoolAnalyticsPage() {
     api.functions.school.analytics.getSchoolOperationalAnalytics,
     token && user?.role === "school_admin" && activeTab === "operational" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (90 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   )
 
@@ -761,7 +765,7 @@ export default function SchoolAnalyticsPage() {
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="hidden md:grid w-full grid-cols-3">
               <TabsTrigger value="overview">Overview</TabsTrigger>

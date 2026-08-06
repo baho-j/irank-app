@@ -359,7 +359,7 @@ const SignInForm = ({ role }: SignInFormProps) => {
 
           {role === "student" ? (
             <Tabs value={authMethod} onValueChange={(value) => setAuthMethod(value as "email" | "magic")} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-3 text-xs sm:text-sm">
                 <TabsTrigger value="email">
                   <Mail className="h-4 w-4 md:hidden" />
                   <span className="hidden md:inline">Email</span>
@@ -405,7 +405,7 @@ const SignInForm = ({ role }: SignInFormProps) => {
                             <FormLabel>Password</FormLabel>
                             <Link
                               href={`/forgot-password?role=${role}`}
-                              className="text-xs text-primary hover:underline"
+                              className="text-xs text-primary hover:underline inline-flex items-center min-h-10 sm:min-h-0"
                             >
                               Forgot password?
                             </Link>
@@ -719,7 +719,7 @@ const SignInForm = ({ role }: SignInFormProps) => {
                             <FormLabel>Password</FormLabel>
                             <Link
                               href={`/forgot-password?role=${role}`}
-                              className="text-xs text-primary hover:underline"
+                              className="text-xs text-primary hover:underline inline-flex items-center min-h-10 sm:min-h-0"
                             >
                               Forgot password?
                             </Link>
@@ -837,7 +837,7 @@ const SignInForm = ({ role }: SignInFormProps) => {
           {role !== "admin" && (
           <div className="text-center text-sm">
             <span className="text-muted-foreground">Don&apos;t have an account? </span>
-            <Link href={`/signup/${role}`} className="text-primary hover:underline">
+            <Link href={`/signup/${role}`} className="text-primary hover:underline inline-flex items-center min-h-10 sm:min-h-0">
               Sign up
             </Link>
           </div>
@@ -846,7 +846,7 @@ const SignInForm = ({ role }: SignInFormProps) => {
           <div className="text-center">
             <Link
               href="/"
-              className="inline-flex items-center text-sm text-primary hover:underline"
+              className="inline-flex items-center min-h-10 sm:min-h-0 text-sm text-primary hover:underline"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

@@ -306,7 +306,7 @@ function ShareReportDialog({
 
             <div className="space-y-3">
               <Label>Sections to Include</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {sections.map((section) => (
                   <div key={section.id} className="flex items-center space-x-2">
                     <Checkbox
@@ -322,7 +322,7 @@ function ShareReportDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="expiration">Expires in (days)</Label>
                 <Select value={expirationDays} onValueChange={setExpirationDays}>
@@ -418,10 +418,10 @@ function ShareReportDialog({
 
 export default function AdminAnalyticsPage() {
   const { token, user } = useAuth()
-  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>({
+  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>(() => ({
     from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
     to: new Date(),
-  })
+  }))
   const [selectedLeague, setSelectedLeague] = useState<string>("all")
   const [selectedCurrency, setSelectedCurrency] = useState<"RWF" | "USD">("RWF")
   const [activeTab, setActiveTab] = useState("overview")
@@ -445,14 +445,21 @@ export default function AdminAnalyticsPage() {
     return sections
   }, [activeTab])
 
+  // Resolved once per change of range: computing it inline made a new object
+  // on every render, which resubscribed each analytics query continuously.
+  const dateWindow = useMemo(() => {
+    const start = dateRange?.from?.getTime()
+    const end = dateRange?.to?.getTime()
+
+    // Both ends come from the picker, which always supplies a full range.
+    return start !== undefined && end !== undefined ? { start, end } : undefined
+  }, [dateRange])
+
   const overviewData = useOffline(useQuery(
     api.functions.admin.analytics.getDashboardOverview,
     token && activeTab === "overview" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   ), "analytics-overview");
 
@@ -460,10 +467,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getTournamentAnalytics,
     token && activeTab === "tournaments" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       league_id: selectedLeague !== "all" ? selectedLeague as any : undefined,
     } : "skip"
   ), "analytics-tournament");
@@ -472,10 +476,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getUserAnalytics,
     token && activeTab === "users" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   ), "analytics-users");
 
@@ -483,10 +484,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getFinancialAnalytics,
     token && activeTab === "financial" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       currency: selectedCurrency,
     } : "skip"
   ), "analytics-financial");
@@ -495,10 +493,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getPerformanceAnalytics,
     token && activeTab === "performance" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   ), "analytics-performance");
 
@@ -508,10 +503,7 @@ export default function AdminAnalyticsPage() {
       token,
       export_format: "csv" as const,
       sections: activeSections,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       filters: currentFilters,
     } : "skip"
   )
@@ -870,7 +862,7 @@ export default function AdminAnalyticsPage() {
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="hidden md:grid w-full grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1010,7 +1002,7 @@ export default function AdminAnalyticsPage() {
                   loading={!overviewData}
                 >
                   <div className="space-y-4 py-4">
-                    <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                       <div>
                         <div className="text-2xl font-bold text-green-600">
                           {overviewData?.growth_metrics?.tournaments != null
@@ -1229,7 +1221,7 @@ export default function AdminAnalyticsPage() {
                 >
                   {tournamentData?.participation_metrics && (
                     <div className="space-y-6 py-4">
-                      <div className="grid grid-cols-2 gap-4 text-center">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
                         <div>
                           <div className="text-3xl font-bold text-primary">
                             {tournamentData.participation_metrics.schools_participated}

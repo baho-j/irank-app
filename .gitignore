@@ -44,3 +44,9 @@ next-env.d.ts
 .idea
 .idea/
 .vapid.tmp.json
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

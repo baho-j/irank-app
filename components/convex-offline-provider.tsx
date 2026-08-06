@@ -1,7 +1,7 @@
 "use client";
 
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useState, useEffect, useSyncExternalStore } from "react";
 import { useConvexOfflineDetector } from "@/lib/pwa/offline-detector";
 import { useOfflineSync } from "@/hooks/use-offline";
 import { WifiOff, Clock } from "lucide-react";
@@ -25,20 +25,15 @@ function OfflineBanner() {
 
         return () => navigator.serviceWorker.removeEventListener("message", onMessage);
     }, [sync]);
-    const [show, setShow] = useState(false);
-    const [mounted, setMounted] = useState(false);
+    // The server cannot know the connection state, so the banner is withheld
+    // until the client has hydrated rather than rendered and then corrected.
+    const hydrated = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false
+    );
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
-    useEffect(() => {
-        if (mounted) {
-            setShow(isOffline);
-        }
-    }, [isOffline, mounted]);
-
-    if (!mounted || !show) return null;
+    if (!hydrated || !isOffline) return null;
 
     return (
       <div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white px-4 py-2 text-sm font-medium">

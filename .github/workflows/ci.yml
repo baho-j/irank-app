@@ -34,6 +34,14 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Judges and representatives use phones, so the 360px layout is checked
+      # on every change rather than only when someone remembers to look.
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Mobile layout (360px)
+        run: npm run test:e2e:mobile
+
       # Not yet blocking: eslint-config-next 16 enabled React Compiler rules
       # that flag 121 pre-existing violations. Tracked in BACKLOG.md; this step
       # keeps them visible until they are fixed, then loses continue-on-error.

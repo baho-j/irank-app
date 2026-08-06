@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Calendar,
+  Share2,
   ChevronDown,
   ChevronRight,
   Crown,
@@ -48,7 +49,8 @@ import { downloadExcel, type ExcelSheet } from "@/lib/export/excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { generateTournamentPairings, validatePairing } from "@/lib/pairing-algorithm";
+import { generateScreenPairings, validatePairing } from "@/lib/pairing/adapter";
+import { TournamentTransfer } from "@/components/offline/tournament-transfer";
 import { Id } from "@/convex/_generated/dataModel";
 import { useOffline } from "@/hooks/use-offline";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -74,6 +76,124 @@ interface Judge {
     _id: Id<"schools">;
     name: string;
   };
+}
+
+const LoadingSkeleton = () => (
+  <div className="space-y-2">
+    <Card>
+      <div className="flex flex-col lg:flex-row lg:items-center bg-brown rounded-t-md lg:justify-between gap-4 p-3">
+        <div>
+          <Skeleton className="h-6 w-48 mb-2" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-18" />
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-8 w-8" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Skeleton className="h-5 w-5 rounded" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+              <Skeleton className="h-8 w-12" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </Card>
+  </div>
+);
+
+interface InputDialogState {
+  open: boolean;
+  title: string;
+  description: string;
+  placeholder: string;
+  onConfirm: (value: string) => void;
+  onCancel?: () => void;
+}
+
+/**
+ * Defined at module scope. Nested inside the component it was rebuilt on every
+ * render, so its own `useState` was discarded and the field cleared as the tab
+ * team typed.
+ */
+function InputDialog({
+  state,
+  onOpenChange,
+}: {
+  state: InputDialogState;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const [openedFor, setOpenedFor] = useState(false);
+
+  if (state.open !== openedFor) {
+    setOpenedFor(state.open);
+    if (state.open) setInputValue("");
+  }
+
+  const handleConfirm = () => {
+    state.onConfirm(inputValue);
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    state.onCancel?.();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={state.open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{state.title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="text-sm text-muted-foreground">{state.description}</div>
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={state.placeholder}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleConfirm();
+              if (e.key === 'Escape') handleCancel();
+            }}
+            autoFocus
+          />
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirm} disabled={!inputValue.trim()}>
+              Confirm
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConflictBadge({ conflicts, visible }: { conflicts: any[]; visible: boolean }) {
+  if (!visible || conflicts.length === 0) return null;
+
+  const hasErrors = conflicts.some(c => c.severity === 'error');
+
+  return (
+    <Badge variant={hasErrors ? "destructive" : "secondary"} className="gap-1">
+      {hasErrors ? <AlertCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+      {conflicts.length}
+    </Badge>
+  );
 }
 
 interface PairingDraft {
@@ -319,12 +439,18 @@ const JudgeSelectionDialog = ({
   const [selectedHeadJudge, setSelectedHeadJudge] = useState<Id<"users"> | undefined>(undefined);
   const [open, setOpen] = useState(false);
 
-  React.useEffect(() => {
+  // Seeded when the panel opens, not whenever the debate record updates:
+  // re-seeding on an update would discard judges the user had just picked.
+  const [openedFor, setOpenedFor] = React.useState(false);
+
+  if (open !== openedFor) {
+    setOpenedFor(open);
+
     if (open) {
       setSelectedJudges(debate.judges || []);
       setSelectedHeadJudge(debate.head_judge_id);
     }
-  }, [open, debate.judges, debate.head_judge_id]);
+  }
 
   if (!canEditJudges) return null;
 
@@ -382,7 +508,7 @@ const JudgeSelectionDialog = ({
 
           {!debate.is_public_speaking && (
             <>
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div>
                   <strong>Proposition:</strong> {debate.proposition_team?.name}
                   {debate.proposition_team?.school && (
@@ -726,7 +852,7 @@ const SharePairingsDialog = ({
               {exportType === 'multiple' && (
                 <div className="space-y-2">
                   <Label>Select Rounds</Label>
-                  <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-32 overflow-y-auto">
                     {allRounds.map((round) => (
                       <div key={round.round_number} className="flex items-center space-x-1">
                         <Checkbox
@@ -754,7 +880,7 @@ const SharePairingsDialog = ({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Button
               onClick={exportToExcel}
               disabled={isExporting || (exportType === 'multiple' && selectedRounds.length === 0)}
@@ -823,17 +949,6 @@ const PairingsTableRow = ({
                             canViewConflicts,
                             canWithdrawTeams
                           }: any) => {
-
-  const ConflictBadge = ({ conflicts }: { conflicts: any[] }) => {
-    if (!canViewConflicts || conflicts.length === 0) return null;
-    const hasErrors = conflicts.some(c => c.severity === 'error');
-    return (
-      <Badge variant={hasErrors ? "destructive" : "secondary"} className="gap-1">
-        {hasErrors ? <AlertCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-        {conflicts.length}
-      </Badge>
-    );
-  };
 
   return (
     <React.Fragment>
@@ -935,6 +1050,7 @@ const PairingsTableRow = ({
         </TableCell>
 
         <TableCell
+          className="hidden lg:table-cell"
           onDragOver={(e) => handleJudgeDragOver(e, index)}
           onDragLeave={handleJudgeDragLeave}
           onDrop={(e) => handleJudgeDrop(e, index)}
@@ -967,9 +1083,9 @@ const PairingsTableRow = ({
           </div>
         </TableCell>
 
-        <TableCell>
+        <TableCell className="hidden sm:table-cell">
           <div className="flex flex-col gap-1">
-            <ConflictBadge conflicts={debate.pairing_conflicts || debate.conflicts || []} />
+            <ConflictBadge conflicts={debate.pairing_conflicts || debate.conflicts || []} visible={canViewConflicts} />
           </div>
         </TableCell>
 
@@ -1149,11 +1265,11 @@ const PairingsTable = ({
         <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
             <TableHead className="w-6"></TableHead>
-            <TableHead className="w-32">Room</TableHead>
-            <TableHead className="w-80">Proposition</TableHead>
-            <TableHead className="w-80">Opposition</TableHead>
-            <TableHead className="w-48">Judges</TableHead>
-            <TableHead className="w-20">Status</TableHead>
+            <TableHead className="w-24 md:w-32">Room</TableHead>
+            <TableHead className="min-w-[10rem] md:w-80">Proposition</TableHead>
+            <TableHead className="min-w-[10rem] md:w-80">Opposition</TableHead>
+            <TableHead className="hidden lg:table-cell lg:w-48">Judges</TableHead>
+            <TableHead className="hidden sm:table-cell sm:w-20">Status</TableHead>
             <TableHead className="w-24">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -1161,7 +1277,10 @@ const PairingsTable = ({
 
       <div
         ref={tableBodyRef}
-        className="max-h-[600px] overflow-y-auto"
+        // Was a fixed 600px, taller than many phone viewports. Sized against
+        // the viewport so the draw scrolls within the screen rather than
+        // pushing the page.
+        className="max-h-[60dvh] overflow-y-auto md:max-h-[600px]"
       >
         <Table>
           <TableBody>
@@ -1236,6 +1355,7 @@ export default function TournamentPairings({
                                            }: TournamentPairingsProps) {
   const [currentRound, setCurrentRound] = useState(1);
   const [isDraft, setIsDraft] = useState(true);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<string | null>(null);
   const [showConflicts, setShowConflicts] = useState(true);
   const [autoSaveDrafts, setAutoSaveDrafts] = useState(true);
@@ -1422,59 +1542,6 @@ export default function TournamentPairings({
     }, 1000);
   }, [isLoadingMore, hasNextPage]);
 
-  const InputDialog = () => {
-    const [inputValue, setInputValue] = useState("");
-
-    useEffect(() => {
-      if (inputDialog.open) {
-        setInputValue("");
-      }
-    }, [inputDialog.open]);
-
-    const handleConfirm = () => {
-      inputDialog.onConfirm(inputValue);
-      setInputDialog(prev => ({ ...prev, open: false }));
-    };
-
-    const handleCancel = () => {
-      inputDialog.onCancel?.();
-      setInputDialog(prev => ({ ...prev, open: false }));
-    };
-
-    return (
-      <Dialog open={inputDialog.open} onOpenChange={(open) =>
-        setInputDialog(prev => ({ ...prev, open }))
-      }>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{inputDialog.title}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">{inputDialog.description}</div>
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder={inputDialog.placeholder}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleConfirm();
-                if (e.key === 'Escape') handleCancel();
-              }}
-              autoFocus
-            />
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={handleCancel}>
-                Cancel
-              </Button>
-              <Button onClick={handleConfirm} disabled={!inputValue.trim()}>
-                Confirm
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  };
-
   useEffect(() => {
     const hasSavedPairings = currentDebates.length > 0;
 
@@ -1605,7 +1672,11 @@ export default function TournamentPairings({
             const roundNumber = foldRounds[i];
             setBulkGenerationProgress({ current: i + 1, total: foldRounds.length });
 
-            const result = generateTournamentPairings(teams, judges, tournament, roundNumber);
+            const { pairings: result } = generateScreenPairings(teams, judges, {
+              round_number: roundNumber,
+              stage: roundNumber > tournament.prelim_rounds ? "elim" : "prelim",
+              judges_per_debate: tournament.judges_per_debate,
+            });
 
             result.forEach(pairing => {
               if (!pairing.is_bye_round) {
@@ -1784,16 +1855,20 @@ export default function TournamentPairings({
 
       setGenerationProgress(75);
 
-      const result = generateTournamentPairings(teams, judges, tournament, currentRound);
+      const { pairings: result, warnings, unpaired } = generateScreenPairings(teams, judges, {
+        round_number: currentRound,
+        stage: isElimination ? "elim" : "prelim",
+        judges_per_debate: tournament.judges_per_debate,
+      });
 
       setGenerationProgress(100);
 
       const newPairings: PairingDraft[] = result.map(pairing => ({
         room_name: pairing.room_name,
-        proposition_team_id: pairing.proposition_team_id,
-        opposition_team_id: pairing.opposition_team_id,
-        judges: pairing.judges,
-        head_judge_id: pairing.head_judge_id,
+        proposition_team_id: pairing.proposition_team_id as Id<"teams"> | undefined,
+        opposition_team_id: pairing.opposition_team_id as Id<"teams"> | undefined,
+        judges: pairing.judges as Id<"users">[],
+        head_judge_id: pairing.head_judge_id as Id<"users"> | undefined,
         is_bye_round: pairing.is_bye_round,
         conflicts: pairing.conflicts,
         quality_score: pairing.quality_score,
@@ -1802,6 +1877,14 @@ export default function TournamentPairings({
       setDraftPairings(newPairings);
       setIsDraft(true);
       saveDraft(newPairings, true);
+
+      if (unpaired.length > 0) {
+        toast.error(`${unpaired.length} teams could not be placed`, {
+          description: "Review the draw before saving.",
+        });
+      }
+
+      warnings.forEach((warning) => toast.warning(warning));
 
       toast.success(`Generated ${result.length} pairings`, {
         description: `${stats.conflicts} conflicts detected`,
@@ -2494,10 +2577,15 @@ export default function TournamentPairings({
     return () => window.removeEventListener('keydown', handleKeyboard);
   }, [canUseKeyboardShortcuts, isDraft, undo, redo, savePairings, generatePairings]);
 
-  useEffect(() => {
+  // History belongs to one round's draft, so it is dropped when either changes.
+  const historyKey = `${currentRound}-${isDraft}`;
+  const [historyFor, setHistoryFor] = useState(historyKey);
+
+  if (historyKey !== historyFor) {
+    setHistoryFor(historyKey);
     setUndoStack([]);
     setRedoStack([]);
-  }, [currentRound, isDraft]);
+  }
 
   const getTeamById = (teamId?: string): Team | undefined => {
     if (!teamId || !pairingData) return undefined;
@@ -2508,40 +2596,6 @@ export default function TournamentPairings({
     if (!judgeId || !pairingData) return undefined;
     return pairingData.judges.find((j: Judge) => j._id === judgeId);
   };
-
-  const LoadingSkeleton = () => (
-    <div className="space-y-2">
-      <Card>
-        <div className="flex flex-col lg:flex-row lg:items-center bg-brown rounded-t-md lg:justify-between gap-4 p-3">
-          <div>
-            <Skeleton className="h-6 w-48 mb-2" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="h-8 w-18" />
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="h-8 w-32" />
-            <Skeleton className="h-8 w-8" />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 p-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Skeleton className="h-5 w-5 rounded" />
-                  <Skeleton className="h-4 w-16" />
-                </div>
-                <Skeleton className="h-8 w-12" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
 
   const displayPairings = isDraft ?
     draftPairings.map((p, i) => ({
@@ -2569,7 +2623,10 @@ export default function TournamentPairings({
         }
       />
 
-      <InputDialog />
+      <InputDialog
+        state={inputDialog}
+        onOpenChange={(open) => setInputDialog(prev => ({ ...prev, open }))}
+      />
 
       <Card className="">
         <div className="flex flex-col lg:flex-row lg:items-center bg-brown rounded-t-md lg:justify-between gap-4 p-3">
@@ -2712,6 +2769,11 @@ export default function TournamentPairings({
                   <span className="hidden custom:block ml-1">All Fold</span>
                 </Button>
               )}
+
+              <Button variant="outline" onClick={() => setTransferOpen(true)}>
+                <Share2 className="h-4 w-4" />
+                <span className="hidden custom:block ml-1">Transfer</span>
+              </Button>
 
               {isDraft && canSavePairings && (
                 <Button onClick={savePairings} variant="default" disabled={isRecalculating}>
@@ -2924,7 +2986,7 @@ export default function TournamentPairings({
                           </TabsList>
 
                           <TabsContent value="overview" className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <h4 className="font-medium mb-2">Tournament Progress</h4>
                                 <div className="space-y-1 text-sm">
@@ -3204,6 +3266,12 @@ export default function TournamentPairings({
           </div>
         )}
       </Card>
+
+      <TournamentTransfer
+        tournamentId={tournament._id}
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+      />
     </div>
   );
 }

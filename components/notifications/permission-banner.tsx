@@ -5,23 +5,26 @@ import { Bell, X, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useNotifications } from "@/hooks/use-notifications"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 export function NotificationPermissionBanner() {
   const { isSupported, permission, requestPermission } = useNotifications()
   const [isDismissed, setIsDismissed] = useState(false)
   const [isRequesting, setIsRequesting] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
-  const [mounted, setMounted] = useState(false)
+
+  // The permission state is only known on the device, so the banner waits for
+  // hydration rather than rendering and then correcting itself.
+  const hydrated = useHydrated()
 
   useEffect(() => {
-    setMounted(true)
     const timer = setTimeout(() => {
       setIsVisible(true)
     }, 500)
     return () => clearTimeout(timer)
   }, [])
 
-  if (!mounted) return null
+  if (!hydrated) return null
 
   if (!isSupported || permission === "granted" || permission === "denied" || isDismissed) {
     return null

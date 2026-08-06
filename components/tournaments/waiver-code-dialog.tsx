@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Button } from "@/components/ui/button"
@@ -121,8 +121,16 @@ export function WaiverCodeDialog({
     }
   };
 
+  // Ticked rather than read at render, so a code that expires while the
+  // dialog is open is shown as expired instead of staying active.
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const getCodeStatus = (code: any) => {
-    const now = Date.now();
     const isExpired = code.expires_at && now > code.expires_at;
     const isExhausted = code.usage_count >= code.usage_limit;
 
@@ -135,7 +143,7 @@ export function WaiverCodeDialog({
   const activeCodes = waiverCodes?.filter(code =>
     code.is_active &&
     code.usage_count < code.usage_limit &&
-    (!code.expires_at || Date.now() < code.expires_at)
+    (!code.expires_at || now < code.expires_at)
   ) || [];
 
   return (

@@ -149,7 +149,14 @@ export function ViewLeagueDetailsDialog({
 
   const isAdmin = userRole === "admin"
 
-  useEffect(() => {
+  // Loaded when the dialog switches to a different league, not whenever the
+  // league record updates: re-seeding on an update would discard edits the
+  // user had not yet saved.
+  const [loadedLeagueId, setLoadedLeagueId] = useState<string | null>(null)
+
+  if (league._id !== loadedLeagueId) {
+    setLoadedLeagueId(league._id)
+
     setFormData({
       name: league.name,
       type: league.type,
@@ -206,7 +213,7 @@ export function ViewLeagueDetailsDialog({
     setSelectedLocations(locations)
     setIsEditing(false)
     setErrors({})
-  }, [league])
+  }
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))

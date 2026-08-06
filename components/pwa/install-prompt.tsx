@@ -7,10 +7,66 @@ import { Download, X, Smartphone } from 'lucide-react'
 import { usePWA } from '@/lib/pwa/pwa-utils'
 import { motion, AnimatePresence } from 'framer-motion'
 
+const DISMISSAL_KEY = 'install-prompt-dismissed'
+
+function getDismissalCount(): number {
+  try {
+    const data = localStorage.getItem('install-prompt-dismissed')
+    if (data) {
+      const parsed = JSON.parse(data)
+      return parsed.count || 0
+    }
+  } catch (error) {
+    console.error('Error reading dismissal data:', error)
+  }
+  return 0
+}
+
+function shouldShowPrompt(): boolean {
+  try {
+    const data = localStorage.getItem('install-prompt-dismissed')
+    if (!data) return true
+
+    const parsed = JSON.parse(data)
+    const dismissalTime = parsed.timestamp
+    const dismissalCount = parsed.count || 0
+
+    if (dismissalCount >= 3) {
+      return false
+    }
+
+    const delays = [
+      24 * 60 * 60 * 1000,
+      7 * 24 * 60 * 60 * 1000,
+      30 * 24 * 60 * 60 * 1000
+    ]
+
+    const delayIndex = Math.min(dismissalCount - 1, delays.length - 1)
+    const requiredDelay = delays[delayIndex] || delays[delays.length - 1]
+
+    return Date.now() - dismissalTime > requiredDelay
+  } catch (error) {
+    console.error('Error checking dismissal:', error)
+    return true
+  }
+}
+
+/** Records a dismissal so the prompt backs off rather than nagging. */
+function recordDismissal(): void {
+  localStorage.setItem(
+    DISMISSAL_KEY,
+    JSON.stringify({ timestamp: Date.now(), count: getDismissalCount() + 1 })
+  )
+}
+
 export function InstallPrompt() {
   const { isInstalled, canInstall, promptInstall } = usePWA()
   const [showPrompt, setShowPrompt] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
+  // Read on the first render: an effect would flash the prompt at someone who
+  // has already dismissed it three times.
+  const [dismissed, setDismissed] = useState(
+    () => typeof window !== "undefined" && !shouldShowPrompt()
+  )
 
   useEffect(() => {
 
@@ -33,64 +89,7 @@ export function InstallPrompt() {
   const handleDismiss = () => {
     setDismissed(true)
     setShowPrompt(false)
-
-    const dismissalData = {
-      timestamp: Date.now(),
-      count: getDismissalCount() + 1
-    }
-    localStorage.setItem('install-prompt-dismissed', JSON.stringify(dismissalData))
-  }
-
-  const getDismissalCount = (): number => {
-    try {
-      const data = localStorage.getItem('install-prompt-dismissed')
-      if (data) {
-        const parsed = JSON.parse(data)
-        return parsed.count || 0
-      }
-    } catch (error) {
-      console.error('Error reading dismissal data:', error)
-    }
-    return 0
-  }
-
-  const shouldShowPrompt = (): boolean => {
-    try {
-      const data = localStorage.getItem('install-prompt-dismissed')
-      if (!data) return true
-
-      const parsed = JSON.parse(data)
-      const dismissalTime = parsed.timestamp
-      const dismissalCount = parsed.count || 0
-
-      if (dismissalCount >= 3) {
-        return false
-      }
-
-      const delays = [
-        24 * 60 * 60 * 1000,
-        7 * 24 * 60 * 60 * 1000,
-        30 * 24 * 60 * 60 * 1000
-      ]
-
-      const delayIndex = Math.min(dismissalCount - 1, delays.length - 1)
-      const requiredDelay = delays[delayIndex] || delays[delays.length - 1]
-
-      return Date.now() - dismissalTime > requiredDelay
-    } catch (error) {
-      console.error('Error checking dismissal:', error)
-      return true
-    }
-  }
-
-  useEffect(() => {
-    if (!shouldShowPrompt()) {
-      setDismissed(true)
-    }
-  }, [])
-
-  if (!showPrompt || !canInstall || isInstalled) {
-    return null
+    recordDismissal()
   }
 
   return (

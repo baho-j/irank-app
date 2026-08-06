@@ -10,12 +10,12 @@ interface ErrorProps {
 }
 
 export default function Error({ reset }: ErrorProps) {
-  const [refreshCount, setRefreshCount] = useState(0);
-
-  useEffect(() => {
-    const count = parseInt(localStorage.getItem('error-refresh-count') || '0');
-    setRefreshCount(count);
-  }, []);
+  // Read on the first render; an effect would show zero for one paint.
+  const [refreshCount, setRefreshCount] = useState(() =>
+    typeof window === "undefined"
+      ? 0
+      : parseInt(localStorage.getItem('error-refresh-count') || '0')
+  );
 
   const handleRefresh = () => {
     const newCount = refreshCount + 1;

@@ -254,14 +254,22 @@ export default function StudentsPage() {
   const generateResetLink = useMutation(api.functions.school.students.generateStudentResetLink)
   const getUrl = useMutation(api.files.getUrl)
 
-  useEffect(() => {
+  // Back to the first page when the filters change, without a second render
+  // pass to correct an out-of-range page.
+  const filterKey = JSON.stringify([debouncedSearch, statusFilter, verificationFilter, gradeFilter])
+  const [pagedFor, setPagedFor] = useState(filterKey)
+
+  if (filterKey !== pagedFor) {
+    setPagedFor(filterKey)
     setPage(1)
-  }, [debouncedSearch, statusFilter, verificationFilter, gradeFilter])
+  }
+
+  const allStudents = studentsData?.students
 
   const filteredStudents = useMemo(() => {
-    if (!studentsData?.students) return []
+    if (!allStudents) return []
 
-    return studentsData.students.filter(student => {
+    return allStudents.filter(student => {
       if (statusFilter.length > 0 && !statusFilter.includes(student.status)) {
         return false
       }
@@ -277,7 +285,7 @@ export default function StudentsPage() {
 
 
     })
-  }, [studentsData?.students, statusFilter, verificationFilter, gradeFilter])
+  }, [allStudents, statusFilter, verificationFilter, gradeFilter])
 
   useEffect(() => {
     async function fetchImageUrl() {
@@ -633,8 +641,8 @@ export default function StudentsPage() {
                     </TableHead>
                     <TableHead>Student Info</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Verified</TableHead>
-                    <TableHead>Debate Activity</TableHead>
+                    <TableHead className="hidden sm:table-cell">Verified</TableHead>
+                    <TableHead className="hidden md:table-cell">Debate Activity</TableHead>
                     <TableHead className="hidden lg:table-cell">Last Login</TableHead>
                     <TableHead className="w-32"></TableHead>
                   </TableRow>
@@ -724,7 +732,7 @@ export default function StudentsPage() {
                           </Badge>
                         </TableCell>
 
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge
                             variant="secondary"
                             className={currentStudent.verified ? "text-green-600 bg-green-100" : "text-orange-600 bg-orange-100"}
@@ -733,7 +741,7 @@ export default function StudentsPage() {
                           </Badge>
                         </TableCell>
 
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell">
                           <Badge
                             variant="secondary"
                             className={cn(

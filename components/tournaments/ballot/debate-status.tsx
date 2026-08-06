@@ -12,12 +12,12 @@ export function debateStatusColor(status: string): string {
   }
 }
 
-export function debateStatusIcon(status: string) {
+/** The icon itself, so callers render it rather than holding a component. */
+export function debateStatusIcon(status: string, className: string) {
   switch (status as DebateStatus) {
-    case "completed": return CheckCircle;
-    case "inProgress": return Timer;
-    case "pending": return Clock;
-    case "noShow": return AlertTriangle;
-    default: return Clock;
+    case "completed": return <CheckCircle className={className} />;
+    case "inProgress": return <Timer className={className} />;
+    case "noShow": return <AlertTriangle className={className} />;
+    default: return <Clock className={className} />;
   }
 }

@@ -61,6 +61,21 @@ interface TeamManagementDialogProps {
   schoolId?: string;
 }
 
+function MemberSearchSkeleton() {
+  return (
+    <div className="space-y-2 p-2">
+      <div className="flex items-center gap-3 p-3">
+        <Skeleton className="h-5 w-5 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-48" />
+          <Skeleton className="h-3 w-24" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TeamManagementDialog({
                                        open,
                                        onOpenChange,
@@ -116,7 +131,15 @@ export function TeamManagementDialog({
 
   const findStudentsByEmail = useMutation(api.functions.teams.findStudentsByEmail);
 
-  useEffect(() => {
+  // Loaded when the dialog switches to a different team, not whenever the team
+  // record updates: the team is a live query, and re-seeding on every update
+  // would discard edits the user had not yet saved.
+  const [loadedTeamId, setLoadedTeamId] = useState<string | null>(null);
+  const editingId = mode === "edit" && team ? String(team._id) : null;
+
+  if (editingId !== loadedTeamId) {
+    setLoadedTeamId(editingId);
+
     if (mode === "edit" && team) {
       setTeamName(team.name);
       setSelectedSchool(team.school?._id);
@@ -133,9 +156,10 @@ export function TeamManagementDialog({
       setTeamStatus("active");
       setWaiverCode("");
     }
+
     setEmailInput("");
     setMemberSearch("");
-  }, [mode, team, isSchoolAdmin, isStudent, schoolId, userId, isDreamsMode]);
+  }
 
   const displayMembers = useMemo(() => {
     if (mode === "edit" && currentTeamMembers.length > 0) {
@@ -346,21 +370,6 @@ export function TeamManagementDialog({
   };
 
   const canUseWaiverCode = isSchoolAdmin && !isDreamsMode && mode === "create";
-
-  const MemberSearchSkeleton = () => (
-    <div className="space-y-2 p-2">
-      {[1].map((i) => (
-        <div key={i} className="flex items-center gap-3 p-3">
-          <Skeleton className="h-5 w-5 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-48" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

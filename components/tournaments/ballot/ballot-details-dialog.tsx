@@ -221,7 +221,7 @@ export function BallotDetailsDialog({ debate, isOpen, onClose, token }: BallotDe
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden max-sm:overflow-y-auto flex flex-col">
         <DialogHeader className="flex-shrink-0 border-b pb-4">
           <DialogTitle className="flex items-center gap-2 text-lg md:text-xl">
             <FileText className="h-4 w-4 md:h-5 md:w-5" />

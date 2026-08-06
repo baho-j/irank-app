@@ -50,6 +50,171 @@ interface LocationItem {
     isoCode: string
 }
 
+const SearchableSelect = ({
+                              value,
+                              onValueChange,
+                              placeholder,
+                              items,
+                              open,
+                              onOpenChange,
+                              error,
+                              disabled = false
+                          }: {
+    value: string
+    onValueChange: (value: string) => void
+    placeholder: string
+    items: LocationItem[]
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    error?: string
+    disabled?: boolean
+}) => (
+  <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              "w-full justify-between h-[34px]",
+              error && "border-destructive",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+            disabled={disabled}
+          >
+                <span className="truncate">
+                    {value ? items.find(item => item.isoCode === value)?.name || value : placeholder}
+                </span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0" align="start">
+          <Command>
+              <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} />
+              <CommandEmpty>No {placeholder.toLowerCase()} found.</CommandEmpty>
+              <CommandGroup className="max-h-64 overflow-auto">
+                  {items.map((item) => (
+                    <CommandItem
+                      key={item.isoCode}
+                      value={item.name}
+                      onSelect={() => {
+                          onValueChange(item.isoCode)
+                          onOpenChange(false)
+                      }}
+                    >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === item.isoCode ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {item.name}
+                    </CommandItem>
+                  ))}
+              </CommandGroup>
+          </Command>
+      </PopoverContent>
+  </Popover>
+)
+
+const SearchableSelectWithCustom = ({
+                                        value,
+                                        onValueChange,
+                                        placeholder,
+                                        items,
+                                        open,
+                                        onOpenChange,
+                                        error,
+                                        disabled = false,
+                                        onCustomSelect
+                                    }: {
+    value: string
+    onValueChange: (value: string) => void
+    placeholder: string
+    items: LocationItem[]
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    error?: string
+    disabled?: boolean
+    onCustomSelect?: () => void
+}) => (
+  <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              "w-full justify-between h-[34px]",
+              error && "border-destructive",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+            disabled={disabled}
+          >
+                <span className="truncate">
+                    {value ? items.find(item => item.isoCode === value)?.name || value : placeholder}
+                </span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0" align="start">
+          <Command>
+              <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} />
+              <CommandEmpty>
+                  <div className="p-2 text-center">
+                      <p className="text-sm text-muted-foreground mb-2">
+                          No {placeholder.toLowerCase()} found.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            onCustomSelect?.()
+                            onOpenChange(false)
+                        }}
+                        className="w-full"
+                      >
+                          Add custom {placeholder.toLowerCase()}
+                      </Button>
+                  </div>
+              </CommandEmpty>
+              <CommandGroup className="max-h-64 overflow-auto">
+                  {items.map((item) => (
+                    <CommandItem
+                      key={item.isoCode}
+                      value={item.name}
+                      onSelect={() => {
+                          onValueChange(item.isoCode)
+                          onOpenChange(false)
+                      }}
+                    >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === item.isoCode ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {item.name}
+                    </CommandItem>
+                  ))}
+                  {items.length > 0 && (
+                    <CommandItem
+                      onSelect={() => {
+                          onCustomSelect?.()
+                          onOpenChange(false)
+                      }}
+                      className="border-t"
+                    >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add custom {placeholder.toLowerCase()}
+                    </CommandItem>
+                  )}
+              </CommandGroup>
+          </Command>
+      </PopoverContent>
+  </Popover>
+)
+
 export function LocationSelector({
                                      onCountryChange,
                                      onProvinceChange,
@@ -270,171 +435,6 @@ export function LocationSelector({
         setCustomCity(value)
         onDistrictChange(value)
     }
-
-    const SearchableSelect = ({
-                                  value,
-                                  onValueChange,
-                                  placeholder,
-                                  items,
-                                  open,
-                                  onOpenChange,
-                                  error,
-                                  disabled = false
-                              }: {
-        value: string
-        onValueChange: (value: string) => void
-        placeholder: string
-        items: LocationItem[]
-        open: boolean
-        onOpenChange: (open: boolean) => void
-        error?: string
-        disabled?: boolean
-    }) => (
-      <Popover open={open} onOpenChange={onOpenChange}>
-          <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={open}
-                className={cn(
-                  "w-full justify-between h-[34px]",
-                  error && "border-destructive",
-                  disabled && "opacity-50 cursor-not-allowed"
-                )}
-                disabled={disabled}
-              >
-                    <span className="truncate">
-                        {value ? items.find(item => item.isoCode === value)?.name || value : placeholder}
-                    </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-full p-0" align="start">
-              <Command>
-                  <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} />
-                  <CommandEmpty>No {placeholder.toLowerCase()} found.</CommandEmpty>
-                  <CommandGroup className="max-h-64 overflow-auto">
-                      {items.map((item) => (
-                        <CommandItem
-                          key={item.isoCode}
-                          value={item.name}
-                          onSelect={() => {
-                              onValueChange(item.isoCode)
-                              onOpenChange(false)
-                          }}
-                        >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                value === item.isoCode ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            {item.name}
-                        </CommandItem>
-                      ))}
-                  </CommandGroup>
-              </Command>
-          </PopoverContent>
-      </Popover>
-    )
-
-    const SearchableSelectWithCustom = ({
-                                            value,
-                                            onValueChange,
-                                            placeholder,
-                                            items,
-                                            open,
-                                            onOpenChange,
-                                            error,
-                                            disabled = false,
-                                            onCustomSelect
-                                        }: {
-        value: string
-        onValueChange: (value: string) => void
-        placeholder: string
-        items: LocationItem[]
-        open: boolean
-        onOpenChange: (open: boolean) => void
-        error?: string
-        disabled?: boolean
-        onCustomSelect?: () => void
-    }) => (
-      <Popover open={open} onOpenChange={onOpenChange}>
-          <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={open}
-                className={cn(
-                  "w-full justify-between h-[34px]",
-                  error && "border-destructive",
-                  disabled && "opacity-50 cursor-not-allowed"
-                )}
-                disabled={disabled}
-              >
-                    <span className="truncate">
-                        {value ? items.find(item => item.isoCode === value)?.name || value : placeholder}
-                    </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-full p-0" align="start">
-              <Command>
-                  <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} />
-                  <CommandEmpty>
-                      <div className="p-2 text-center">
-                          <p className="text-sm text-muted-foreground mb-2">
-                              No {placeholder.toLowerCase()} found.
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                                onCustomSelect?.()
-                                onOpenChange(false)
-                            }}
-                            className="w-full"
-                          >
-                              Add custom {placeholder.toLowerCase()}
-                          </Button>
-                      </div>
-                  </CommandEmpty>
-                  <CommandGroup className="max-h-64 overflow-auto">
-                      {items.map((item) => (
-                        <CommandItem
-                          key={item.isoCode}
-                          value={item.name}
-                          onSelect={() => {
-                              onValueChange(item.isoCode)
-                              onOpenChange(false)
-                          }}
-                        >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                value === item.isoCode ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            {item.name}
-                        </CommandItem>
-                      ))}
-                      {items.length > 0 && (
-                        <CommandItem
-                          onSelect={() => {
-                              onCustomSelect?.()
-                              onOpenChange(false)
-                          }}
-                          className="border-t"
-                        >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add custom {placeholder.toLowerCase()}
-                        </CommandItem>
-                      )}
-                  </CommandGroup>
-              </Command>
-          </PopoverContent>
-      </Popover>
-    )
 
     if (loading) {
         return (
