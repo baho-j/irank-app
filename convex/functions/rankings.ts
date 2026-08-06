@@ -1438,10 +1438,39 @@ export const updateRankingRelease = mutation({
       throw new Error(`Invalid roles: ${invalidRoles.join(', ')}`);
     }
 
+    const previous = tournament.ranking_released;
+
     await ctx.db.patch(args.tournament_id, {
       ranking_released: args.ranking_settings,
       updated_at: Date.now(),
     });
+
+    // Only scopes newly opened trigger mail, so re-saving the settings does
+    // not send the announcement a second time.
+    for (const scope of ["prelims", "full_tournament"] as const) {
+      const now = args.ranking_settings[scope];
+      const before = previous?.[scope];
+
+      const newlyReleased = {
+        students: now.students && !before?.students,
+        teams: now.teams && !before?.teams,
+        schools: now.schools && !before?.schools,
+      };
+
+      if (!newlyReleased.students && !newlyReleased.teams && !newlyReleased.schools) {
+        continue;
+      }
+
+      await ctx.scheduler.runAfter(
+        0,
+        internal.functions.notification_emails.announceRankingRelease,
+        {
+          tournament_id: args.tournament_id,
+          scope,
+          released: newlyReleased,
+        }
+      );
+    }
 
     await ctx.runMutation(internal.functions.audit.createAuditLog, {
       user_id: sessionResult.user.id,

@@ -1,4 +1,5 @@
-import { mutation, query } from "../_generated/server";
+import { query } from "../_generated/server";
+import { mutation } from "../lib/aggregates";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -862,13 +863,78 @@ export const getPairingStats = query({
       )
       .collect();
 
+    const schoolByTeam = new Map(teams.map((team) => [team._id, team.school_id]));
+    const roundByDebate = new Map(rounds.map((round) => [round._id, round.round_number]));
+
+    const meetings = new Map<string, number>();
+    const sideCounts = new Map<Id<"teams">, { prop: number; opp: number }>();
+    const byeCounts = new Map<Id<"teams">, number>();
+    const judgeRounds = new Map<Id<"users">, Set<number>>();
+    const judgeLoad = new Map<Id<"users">, number>();
+
+    let schoolConflicts = 0;
+
+    for (const debate of debates) {
+      const prop = debate.proposition_team_id;
+      const opp = debate.opposition_team_id;
+
+      if (debate.is_bye) {
+        const team = prop ?? opp;
+        if (team) byeCounts.set(team, (byeCounts.get(team) ?? 0) + 1);
+      } else if (prop && opp) {
+        const key = [prop, opp].sort().join("+");
+        meetings.set(key, (meetings.get(key) ?? 0) + 1);
+
+        if (schoolByTeam.get(prop) && schoolByTeam.get(prop) === schoolByTeam.get(opp)) {
+          schoolConflicts += 1;
+        }
+
+        for (const [team, side] of [[prop, "prop"], [opp, "opp"]] as const) {
+          const record = sideCounts.get(team) ?? { prop: 0, opp: 0 };
+          record[side] += 1;
+          sideCounts.set(team, record);
+        }
+      }
+
+      const roundNumber = roundByDebate.get(debate.round_id);
+
+      for (const judgeId of debate.judges) {
+        judgeLoad.set(judgeId, (judgeLoad.get(judgeId) ?? 0) + 1);
+
+        if (roundNumber === undefined) continue;
+
+        const seen = judgeRounds.get(judgeId) ?? new Set<number>();
+        seen.add(roundNumber);
+        judgeRounds.set(judgeId, seen);
+      }
+    }
+
+    const repeatMatchups = [...meetings.values()].filter((count) => count > 1).length;
+
+    const sideImbalances = [...sideCounts.values()].filter(
+      (record) => Math.abs(record.prop - record.opp) > 1
+    ).length;
+
+    const multipleByes = [...byeCounts.values()].filter((count) => count > 1).length;
+
+    // Rooms in a round run at the same time, so more debates than distinct
+    // rounds means the judge was booked into two rooms at once.
+    const judgeOverloads = [...judgeLoad.entries()].filter(
+      ([judgeId, load]) => load > (judgeRounds.get(judgeId)?.size ?? load)
+    ).length;
+
     const qualityMetrics = {
-      repeat_matchups: 0,
-      side_imbalances: 0,
-      multiple_byes: 0,
-      school_conflicts: 0,
-      judge_overloads: 0,
-      total_quality_score: 0,
+      repeat_matchups: repeatMatchups,
+      side_imbalances: sideImbalances,
+      multiple_byes: multipleByes,
+      school_conflicts: schoolConflicts,
+      judge_overloads: judgeOverloads,
+      total_quality_score:
+        repeatMatchups * 10 +
+        schoolConflicts * 8 +
+        sideImbalances * 2 +
+        multipleByes * 5 +
+        judgeOverloads * 3,
     };
 
     return {
@@ -876,6 +942,7 @@ export const getPairingStats = query({
       total_teams: teams.length,
       total_debates: debates.length,
       public_speaking_rounds: debates.filter(d => d.is_public_speaking).length,
+      bye_rounds: debates.filter(d => d.is_bye).length,
       quality_metrics: qualityMetrics,
       recommendations: generatePairingRecommendations(qualityMetrics, teams.length, rounds.length),
     };
@@ -952,7 +1019,9 @@ function generatePairingRecommendations(
     recommendations.push("Excellent pairing quality maintained beyond round 5!");
   }
 
-  if (qualityMetrics.total_quality_score === 0) {
+  if (totalRounds === 0) {
+    recommendations.push("No rounds have been paired yet.");
+  } else if (qualityMetrics.total_quality_score === 0) {
     recommendations.push("Perfect pairing quality achieved!");
   } else if (qualityMetrics.total_quality_score < 20) {
     recommendations.push("Good pairing quality with minor issues.");

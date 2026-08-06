@@ -6,6 +6,7 @@ import { visibleMotion } from "../../lib/motion_release";
 import { paginationOptsValidator } from "convex/server";
 import { resolvePanel } from "../../lib/ballot_results";
 import { scoreBallot, speakerScoreValidator } from "../../lib/ballot_validation";
+import { computeStandings, matchesStored } from "../../lib/standings";
 
 export const getJudgeAssignedDebates = query({
   args: {
@@ -208,7 +209,49 @@ export const updateDebateResults = async (ctx: any, debateId: Id<"debates">) => 
   });
 
   if (outcome.decided) {
+    await refreshStandings(ctx, debate.tournament_id);
     await checkAndUpdateRoundCompletion(ctx, debate.round_id);
+  }
+};
+
+/**
+ * Rewrites every team's stored record for the tournament. Called whenever a
+ * debate is decided, so rankings and the pairing engine read a current record
+ * instead of recomputing it from the debate table on each request.
+ */
+export const refreshStandings = async (ctx: any, tournamentId: Id<"tournaments">) => {
+  const [teams, debates, rounds] = await Promise.all([
+    ctx.db
+      .query("teams")
+      .withIndex("by_tournament_id", (q: any) => q.eq("tournament_id", tournamentId))
+      .collect(),
+    ctx.db
+      .query("debates")
+      .withIndex("by_tournament_id", (q: any) => q.eq("tournament_id", tournamentId))
+      .collect(),
+    ctx.db
+      .query("rounds")
+      .withIndex("by_tournament_id", (q: any) => q.eq("tournament_id", tournamentId))
+      .collect(),
+  ]);
+
+  const standings = computeStandings(teams, debates, rounds);
+  const byId = new Map(teams.map((team: Doc<"teams">) => [team._id, team]));
+
+  for (const standing of standings) {
+    const team = byId.get(standing.team_id) as Doc<"teams"> | undefined;
+    if (!team || matchesStored(team, standing)) continue;
+
+    await ctx.db.patch(standing.team_id, {
+      prelim_wins: standing.prelim_wins,
+      prelim_losses: standing.prelim_losses,
+      prelim_points: standing.prelim_points,
+      elimination_wins: standing.elimination_wins,
+      elimination_losses: standing.elimination_losses,
+      elimination_points: standing.elimination_points,
+      eliminated_in_round: standing.eliminated_in_round,
+      opponents_faced: standing.opponents_faced,
+    });
   }
 };
 

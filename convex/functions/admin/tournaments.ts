@@ -1,4 +1,5 @@
-import { mutation, query } from "../../_generated/server";
+import { query } from "../../_generated/server";
+import { mutation } from "../../lib/aggregates";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { Id } from "../../_generated/dataModel";
@@ -327,6 +328,16 @@ export const updateTournament = mutation({
       slug: finalSlug,
       updated_at: Date.now(),
     });
+
+    // Thank the participating schools the moment the tournament closes, and
+    // only on the transition, so re-saving a completed tournament is silent.
+    if (updateData.status === "completed" && existingTournament.status !== "completed") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.functions.notification_emails.thankSchoolsForTournament,
+        { tournament_id }
+      );
+    }
 
     if (motions) {
 
