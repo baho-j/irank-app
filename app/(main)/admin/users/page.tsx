@@ -266,14 +266,22 @@ export default function UsersPage() {
   const generateResetLink = useMutation(api.functions.admin.users.generateResetLink)
   const getUrl = useMutation(api.files.getUrl)
 
-  useEffect(() => {
+  // Back to the first page when the filters change, without a second render
+  // pass to correct an out-of-range page.
+  const filterKey = JSON.stringify([debouncedSearch, roleFilter, statusFilter, verificationFilter])
+  const [pagedFor, setPagedFor] = useState(filterKey)
+
+  if (filterKey !== pagedFor) {
+    setPagedFor(filterKey)
     setPage(1)
-  }, [debouncedSearch, roleFilter, statusFilter, verificationFilter])
+  }
+
+  const allUsers = usersData?.users
 
   const filteredUsers = useMemo(() => {
-    if (!usersData?.users) return []
+    if (!allUsers) return []
 
-    return usersData.users.filter(user => {
+    return allUsers.filter(user => {
       if (roleFilter.length > 0 && !roleFilter.includes(user.role)) {
         return false
       }
@@ -291,7 +299,7 @@ export default function UsersPage() {
 
       return true
     })
-  }, [usersData?.users, roleFilter, statusFilter, verificationFilter])
+  }, [allUsers, roleFilter, statusFilter, verificationFilter])
 
   useEffect(() => {
     async function fetchImageUrl() {
@@ -652,7 +660,7 @@ export default function UsersPage() {
                     </TableHead>
                     <TableHead>Full Name</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Verified</TableHead>
+                    <TableHead className="hidden sm:table-cell">Verified</TableHead>
                     <TableHead className="hidden lg:table-cell">Last Login</TableHead>
                     <TableHead className="w-32"></TableHead>
                   </TableRow>
@@ -749,7 +757,7 @@ export default function UsersPage() {
                               {currentUser.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden sm:table-cell">
                             <Badge
                               variant="secondary"
                               className={currentUser.verified ? "text-green-600 bg-green-100" : "text-orange-600 bg-orange-100"}

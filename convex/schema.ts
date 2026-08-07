@@ -388,6 +388,7 @@ export default defineSchema({
       v.literal("noShow")
     ),
     is_public_speaking: v.boolean(),
+    is_bye: v.optional(v.boolean()),
     start_time: v.optional(v.number()),
     end_time: v.optional(v.number()),
     current_speaker: v.optional(v.id("users")),
@@ -462,35 +463,68 @@ export default defineSchema({
 
   judging_scores: defineTable({
     debate_id: v.id("debates"),
+    tournament_id: v.optional(v.id("tournaments")),
     judge_id: v.id("users"),
-    winning_team_id: v.id("teams"),
-    winning_position: v.union(
+    winning_team_id: v.optional(v.id("teams")),
+    winning_position: v.optional(v.union(
       v.literal("proposition"),
       v.literal("opposition")
-    ),
+    )),
+
     speaker_scores: v.array(v.object({
       speaker_id: v.id("users"),
       team_id: v.id("teams"),
-      position: v.string(),
-      score: v.number(),
+      position: v.union(
+        v.literal("first"),
+        v.literal("second"),
+        v.literal("third"),
+        v.literal("reply")
+      ),
+      speech_type: v.union(v.literal("substantive"), v.literal("reply")),
+      style: v.number(),
+      content: v.number(),
+      strategy: v.number(),
+      poi_modifier: v.optional(v.number()),
+      total: v.number(),
       comments: v.optional(v.string()),
-      role_fulfillment: v.optional(v.number()),
-      argumentation_clash: v.optional(v.number()),
-      content_development: v.optional(v.number()),
-      style_strategy_delivery: v.optional(v.number()),
       bias_detected: v.optional(v.boolean()),
-      bias_explanation: v.optional(v.string())
+      bias_explanation: v.optional(v.string()),
     })),
+
+    rfd: v.optional(v.string()),
     notes: v.optional(v.string()),
-    submitted_at: v.number(),
-    feedback_submitted: v.optional(v.boolean()),
+
+    submission_state: v.union(
+      v.literal("not_started"),
+      v.literal("in_progress"),
+      v.literal("submitted")
+    ),
+
+    flagged: v.optional(v.boolean()),
+    flag_reason: v.optional(v.string()),
+    flagged_by: v.optional(v.id("users")),
+    flagged_at: v.optional(v.number()),
+
+    ballot_edits: v.optional(v.array(v.object({
+      editor_id: v.id("users"),
+      reason: v.string(),
+      previous_speaker_scores: v.string(),
+      previous_winning_team_id: v.optional(v.id("teams")),
+      edited_at: v.number(),
+    }))),
+
+    submitted_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.optional(v.number()),
   })
     .index("by_debate_id", ["debate_id"])
     .index("by_judge_id", ["judge_id"])
     .index("by_debate_id_judge_id", ["debate_id", "judge_id"])
-    .index("by_submitted_at", ["submitted_at"]),
+    .index("by_submitted_at", ["submitted_at"])
+    .index("by_debate_id_submission_state", ["debate_id", "submission_state"])
+    .index("by_tournament_id", ["tournament_id"])
+    .index("by_tournament_id_submission_state", ["tournament_id", "submission_state"])
+    .index("by_flagged", ["flagged"]),
 
   judge_results: defineTable({
     tournament_id: v.id("tournaments"),
@@ -699,6 +733,95 @@ export default defineSchema({
       filterFields: ["user_id", "action", "resource_type", "timestamp"]
     }),
 
+  school_tiers: defineTable({
+    school_id: v.id("schools"),
+    tier: v.union(
+      v.literal("elite"),
+      v.literal("advanced"),
+      v.literal("developing"),
+      v.literal("beginner")
+    ),
+    pending_tier: v.optional(v.union(
+      v.literal("elite"),
+      v.literal("advanced"),
+      v.literal("developing"),
+      v.literal("beginner")
+    )),
+    pending_count: v.optional(v.number()),
+    score: v.number(),
+    performance_score: v.number(),
+    attendance_score: v.number(),
+    hosting_score: v.number(),
+    verified_activities: v.number(),
+    rank: v.number(),
+    evaluated_at: v.number(),
+    changed_at: v.optional(v.number()),
+  })
+    .index("by_school_id", ["school_id"])
+    .index("by_tier", ["tier"])
+    .index("by_rank", ["rank"]),
+
+  team_lineups: defineTable({
+    debate_id: v.id("debates"),
+    team_id: v.id("teams"),
+    tournament_id: v.id("tournaments"),
+    speakers: v.array(v.object({
+      speaker_id: v.id("users"),
+      position: v.union(
+        v.literal("first"),
+        v.literal("second"),
+        v.literal("third"),
+        v.literal("reply")
+      ),
+    })),
+    set_by: v.id("users"),
+    set_at: v.number(),
+  })
+    .index("by_debate_id", ["debate_id"])
+    .index("by_debate_id_team_id", ["debate_id", "team_id"])
+    .index("by_tournament_id", ["tournament_id"]),
+
+  ranking_snapshots: defineTable({
+    scope: v.union(v.literal("student"), v.literal("school"), v.literal("volunteer")),
+    entity_id: v.string(),
+    rank: v.number(),
+    previous_rank: v.optional(v.number()),
+    total_points: v.number(),
+    average_points: v.number(),
+    tournaments_count: v.number(),
+    computed_at: v.number(),
+  })
+    .index("by_scope_rank", ["scope", "rank"])
+    .index("by_scope_entity", ["scope", "entity_id"]),
+
+  /**
+   * Per-tournament partial tallies, written by the fan-out and consumed by the
+   * merge that follows it. Staged rather than accumulated in memory so each
+   * tournament is its own transaction, which keeps a rebuild bounded however
+   * many tournaments the league has run.
+   */
+  ranking_tallies: defineTable({
+    run_id: v.string(),
+    scope: v.union(v.literal("student"), v.literal("school"), v.literal("volunteer")),
+    entity_id: v.string(),
+    tournament_id: v.id("tournaments"),
+    total_points: v.number(),
+    scores_count: v.number(),
+  })
+    .index("by_run_id", ["run_id"])
+    .index("by_run_id_scope", ["run_id", "scope"]),
+
+  /**
+   * One row per rebuild in flight, counting the tallies still outstanding.
+   * The merge runs when the count reaches zero, since jobs finish in an order
+   * the fan-out cannot predict.
+   */
+  ranking_runs: defineTable({
+    run_id: v.string(),
+    outstanding: v.number(),
+    started_at: v.number(),
+  }).index("by_run_id", ["run_id"]),
+
   payments: defineTable({
     tournament_id: v.id("tournaments"),
     school_id: v.optional(v.id("schools")),
@@ -725,5 +848,6 @@ export default defineSchema({
   })
     .index("by_tournament_id", ["tournament_id", "status"])
     .index("by_school_id", ["school_id", "status"])
+    .index("by_tournament_id_school_id", ["tournament_id", "school_id"])
     .index("by_created_at", ["created_at"]),
 });

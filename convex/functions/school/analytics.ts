@@ -225,7 +225,7 @@ export const getSchoolPerformanceAnalytics = query({
 
           return {
             tournament_id: tournament?._id,
-            speaker_score: speakerScore?.score || 0,
+            speaker_score: speakerScore?.total || 0,
             debate_date: debate?.start_time || tournament?.start_date || now,
           };
         });
@@ -500,7 +500,7 @@ export const getSchoolPerformanceAnalytics = query({
             const memberScore = memberJudgingScores.length > 0
               ? memberJudgingScores.reduce((sum, score) => {
               const speakerScore = score.speaker_scores?.find(s => s.speaker_id === memberId);
-              return sum + (speakerScore?.score || 0);
+              return sum + (speakerScore?.total || 0);
             }, 0) / memberJudgingScores.length
               : 0;
 
@@ -523,7 +523,7 @@ export const getSchoolPerformanceAnalytics = query({
               });
 
             const previousScore = previousScores.length > 0
-              ? previousScores[0].speaker_scores?.find(s => s.speaker_id === memberId)?.score || 0
+              ? previousScores[0].speaker_scores?.find(s => s.speaker_id === memberId)?.total || 0
               : 0;
 
             const improvementFromLast = memberScore - previousScore;
@@ -1369,7 +1369,7 @@ export const getSchoolAchievementsAndBadges = query({
     const topSpeakers = judgingScores.filter(score =>
       score.speaker_scores?.some(s =>
         schoolStudents.some(student => student._id === s.speaker_id) &&
-        s.score >= 25
+        s.total >= 70
       )
     );
 

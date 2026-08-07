@@ -23,6 +23,23 @@ import {
 
 import { ViewLeagueDetailsDialog } from "@/components/tournaments/view-league-details-dialog"
 
+const LeagueList = dynamic(() =>
+    import("@/components/tournaments/league-list").then(mod => mod.LeagueList),
+  {
+    loading: () => null,
+    ssr: false,
+  }
+)
+
+const TournamentList = dynamic(() =>
+    import("@/components/tournaments/tournament-list").then(mod => mod.TournamentList),
+  {
+    loading: () => null,
+    ssr: false,
+  }
+)
+
+
 interface League {
   _id: Id<"leagues">
   name: string
@@ -79,22 +96,6 @@ export default function AdminTournamentsPage() {
       toast.error(error.message?.split("Uncaught Error:")[1]?.split(/\.|Called by client/)[0]?.trim() || "Failed to delete league")
     }
   }
-
-  const LeagueList = dynamic(() =>
-      import("@/components/tournaments/league-list").then(mod => mod.LeagueList),
-    {
-      loading: () => null,
-      ssr: false,
-    }
-  )
-
-  const TournamentList = dynamic(() =>
-      import("@/components/tournaments/tournament-list").then(mod => mod.TournamentList),
-    {
-      loading: () => null,
-      ssr: false,
-    }
-  )
 
   return (
     <div className="space-y-6">

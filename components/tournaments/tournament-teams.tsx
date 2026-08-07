@@ -48,7 +48,7 @@ import {
   FileSpreadsheet, FileText, Download,
   Loader2
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import { downloadExcel } from "@/lib/export/excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useDebounce } from "@/hooks/use-debounce"
@@ -86,6 +86,84 @@ const PAYMENT_STATUS_OPTIONS = [
   { label: "Paid", value: "paid" },
   { label: "Waived", value: "waived" }
 ];
+
+function ExportDialog({
+  open,
+  onOpenChange,
+  format,
+  onFormatChange,
+  onExport,
+  isExporting,
+  hasTeams,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  format: 'csv' | 'pdf';
+  onFormatChange: (format: 'csv' | 'pdf') => void;
+  onExport: () => void;
+  isExporting: boolean;
+  hasTeams: boolean;
+}) {
+  return (
+<Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-w-md">
+      <DialogHeader>
+        <DialogTitle>Export Teams</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <Label>Export Format</Label>
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <input
+                type="radio"
+                id="csv"
+                name="format"
+                checked={format === 'csv'}
+                onChange={() => onFormatChange('csv')}
+              />
+              <Label htmlFor="csv">Excel (.xlsx)</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="radio"
+                id="pdf"
+                name="format"
+                checked={format === 'pdf'}
+                onChange={() => onFormatChange('pdf')}
+              />
+              <Label htmlFor="pdf">PDF (.pdf)</Label>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Button
+            onClick={onExport}
+            disabled={isExporting || !hasTeams}
+            className="flex items-center gap-2"
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : format === 'csv' ? (
+              <FileSpreadsheet className="h-4 w-4" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            Export
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+  );
+}
 
 function TeamsSkeleton() {
   return (
@@ -359,11 +437,15 @@ export function TournamentTeams({
   const bulkUpdateTeams = useMutation(api.functions.admin.teams.bulkUpdateTeams);
   const leaveTeam = useMutation(api.functions.teams.leaveTeam);
 
-  useEffect(() => {
-    if (canUseFilters) {
-      setPage(1);
-    }
-  }, [debouncedSearch, statusFilter, paymentFilter, schoolFilter, canUseFilters]);
+  // Back to the first page when the filters change, without a second render
+  // pass to correct an out-of-range page.
+  const filterKey = JSON.stringify([debouncedSearch, statusFilter, paymentFilter, schoolFilter]);
+  const [pagedFor, setPagedFor] = useState(filterKey);
+
+  if (canUseFilters && filterKey !== pagedFor) {
+    setPagedFor(filterKey);
+    setPage(1);
+  }
 
   const schoolOptions: { value: string; label: string; icon?: React.ReactNode }[] = useMemo(() => {
     if (!tournamentSchools || !canUseFilters) return [];
@@ -505,12 +587,10 @@ export function TournamentTeams({
         'Invitation Code': team.invitation_code || 'N/A'
       }));
 
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, "Teams");
-
-      const fileName = `${tournament.name}_Teams.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      await downloadExcel(
+        [{ name: "Teams", rows: data }],
+        `${tournament.name}_Teams.xlsx`
+      );
 
       toast.success("Excel file downloaded!");
     } catch (error) {
@@ -743,66 +823,6 @@ export function TournamentTeams({
     }
   ] : [];
 
-  const ExportDialog = () => (
-    <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Export Teams</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-3">
-            <Label>Export Format</Label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="csv"
-                  name="exportFormat"
-                  checked={exportFormat === 'csv'}
-                  onChange={() => setExportFormat('csv')}
-                />
-                <Label htmlFor="csv">Excel (.xlsx)</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="pdf"
-                  name="exportFormat"
-                  checked={exportFormat === 'pdf'}
-                  onChange={() => setExportFormat('pdf')}
-                />
-                <Label htmlFor="pdf">PDF (.pdf)</Label>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Button
-              onClick={exportFormat === 'csv' ? exportToExcel : exportToPDF}
-              disabled={isExporting || teams.length === 0}
-              className="flex items-center gap-2"
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : exportFormat === 'csv' ? (
-                <FileSpreadsheet className="h-4 w-4" />
-              ) : (
-                <FileText className="h-4 w-4" />
-              )}
-              Export
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowExportDialog(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-
   const toolbar = (
     <DataToolbar
       searchTerm={canUseFilters ? searchTerm : ""}
@@ -845,7 +865,7 @@ export function TournamentTeams({
                       </TableHead>
                     )}
                     <TableHead>Team</TableHead>
-                    <TableHead>Members</TableHead>
+                    <TableHead className="hidden sm:table-cell">Members</TableHead>
                     <TableHead>Status</TableHead>
                     
                     {tournament.league?.type !== "Dreams Mode" && (
@@ -916,7 +936,7 @@ export function TournamentTeams({
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden sm:table-cell">
                             <div className="flex -space-x-2">
                               {team.members.slice(0, 3).map((member: any) => (
                                 <Tooltip key={member._id}>
@@ -1176,7 +1196,15 @@ export function TournamentTeams({
         />
       )}
       {(canCreateTeams || teamToEdit) && (
-        <ExportDialog />
+        <ExportDialog
+          open={showExportDialog}
+          onOpenChange={setShowExportDialog}
+          format={exportFormat}
+          onFormatChange={setExportFormat}
+          onExport={exportFormat === 'csv' ? exportToExcel : exportToPDF}
+          isExporting={isExporting}
+          hasTeams={teams.length > 0}
+        />
       )}
 
     </CardLayoutWithToolbar>

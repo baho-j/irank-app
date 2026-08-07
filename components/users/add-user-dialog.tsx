@@ -371,7 +371,7 @@ export function AddUserDialog({ open, onOpenChange, onUserAdded, userType = "adm
 
         {userType === "admin" ? (
           <Tabs value={selectedRole} onValueChange={handleRoleChange} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
               <TabsTrigger value="student">Student</TabsTrigger>
               <TabsTrigger value="school_admin">School Admin</TabsTrigger>
               <TabsTrigger value="volunteer">Volunteer</TabsTrigger>

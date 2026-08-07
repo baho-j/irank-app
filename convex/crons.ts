@@ -15,6 +15,28 @@ crons.interval(
   internal.functions.notifications.cleanupExpiredNotifications,
 );
 
+// Fans out over tournaments through the ranking pool rather than walking them
+// all in one transaction.
+crons.daily(
+  "rebuild ranking snapshots",
+  { hourUTC: 3, minuteUTC: 0 },
+  internal.functions.ranking_rebuild.startRebuild,
+);
+
+crons.daily(
+  "clear abandoned ranking tallies",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.functions.ranking_rebuild.cleanupStaleTallies,
+);
+
+// Tiers are relative, so one school's result can move another's band. They are
+// recomputed for the whole league rather than per school.
+crons.daily(
+  "recalculate school tiers",
+  { hourUTC: 3, minuteUTC: 30 },
+  internal.functions.school_tiers.recalculateTiers,
+);
+
 crons.daily(
   "cleanup inactive subscriptions",
   { hourUTC: 2, minuteUTC: 0 },

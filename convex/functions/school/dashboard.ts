@@ -1,6 +1,7 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
+import { countableForRole } from "../../lib/ranking_release";
 import { Id, Doc } from "../../_generated/dataModel";
 
 export const getSchoolDashboardStats = query({
@@ -134,10 +135,12 @@ export const getSchoolRankAndPosition = query({
       .collect();
 
     const allDebates = await ctx.db.query("debates").collect();
-    const allTournaments = await ctx.db
+    const allTournaments = (await ctx.db
       .query("tournaments")
       .withIndex("by_status", (q) => q.eq("status", "completed"))
-      .collect();
+      .collect()).filter((tournament) =>
+        countableForRole(tournament, "schools", sessionResult.user!.role)
+      );
 
     const sortedTournaments = allTournaments.sort((a, b) => a.end_date - b.end_date);
     const latestTournament = sortedTournaments[sortedTournaments.length - 1];
@@ -469,14 +472,29 @@ export const getSchoolLeaderboard = query({
       .withIndex("by_status", (q) => q.eq("status", "active"))
       .collect();
 
+    const role = sessionResult.user.role;
+
+    const completedTournaments = await ctx.db
+      .query("tournaments")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .collect();
+
+    const countableTournamentIds = new Set(
+      completedTournaments
+        .filter((tournament) => countableForRole(tournament, "schools", role))
+        .map((tournament) => tournament._id)
+    );
+
     const schoolsWithPerformance = [];
-    const allDebates = await ctx.db.query("debates").collect();
+    const allDebates = (await ctx.db.query("debates").collect()).filter((debate) =>
+      countableTournamentIds.has(debate.tournament_id)
+    );
 
     for (const school of allSchools) {
-      const schoolTeams = await ctx.db
+      const schoolTeams = (await ctx.db
         .query("teams")
         .withIndex("by_school_id", (q) => q.eq("school_id", school._id))
-        .collect();
+        .collect()).filter((team) => countableTournamentIds.has(team.tournament_id));
 
       if (schoolTeams.length > 0) {
         let totalPoints = 0;
@@ -521,7 +539,7 @@ export const getSchoolLeaderboard = query({
             totalWins,
             tournamentCount,
             avgPoints: Math.round((totalPoints / tournamentCount) * 10) / 10,
-            rankChange: Math.random() > 0.6 ? 1 : Math.random() > 0.3 ? -1 : 0,
+            rankChange: 0,
           });
         }
       }

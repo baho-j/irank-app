@@ -31,12 +31,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from '../ui/skeleton';
 import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
-import * as XLSX from "xlsx";
+import { downloadExcel } from "@/lib/export/excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -168,7 +169,7 @@ function RankingSkeleton() {
         </CardContent>
       </Card>
 
-      <div className="grid w-full grid-cols-4 gap-2">
+      <div className="grid w-full grid-cols-2 sm:grid-cols-4 gap-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-full" />
         ))}
@@ -283,8 +284,6 @@ const ExportDialog = ({
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
-      const wb = XLSX.utils.book_new();
-
       let data: any[] = [];
       const scope = includeElimination ? 'Full Tournament' : 'Preliminary Rounds';
 
@@ -350,11 +349,10 @@ const ExportDialog = ({
           break;
       }
 
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Rankings`);
-
+      const sheetName = `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Rankings`;
       const fileName = `${tournament.name}_${activeTab}_Rankings_${scope.replace(' ', '_')}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+
+      await downloadExcel([{ name: sheetName, rows: data }], fileName);
 
       toast.success("Excel file downloaded!");
     } catch (error) {
@@ -689,14 +687,30 @@ export default function TournamentRankings({
     visible_to_roles: ['school_admin', 'student', 'volunteer']
   });
 
-  useEffect(() => {
-    if (tournament.ranking_released && canManageReleaseSettings) {
+  // Loaded when the tournament changes, not on every update of its record:
+  // the tournament is a live query, and re-seeding would discard toggles the
+  // coordinator had set but not yet saved.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  if (canManageReleaseSettings && tournament._id !== loadedFor) {
+    setLoadedFor(tournament._id);
+
+    if (tournament.ranking_released) {
       setReleaseSettings(tournament.ranking_released);
     }
-  }, [tournament, canManageReleaseSettings]);
+  }
+
+  // A brief spinner while a tab's rankings are recomputed. Raised as the tab
+  // changes rather than in an effect, so the spinner shows on the same paint.
+  const tabKey = `${activeTab}-${includeElimination}`;
+  const [loadingFor, setLoadingFor] = useState(tabKey);
+
+  if (tabKey !== loadingFor) {
+    setLoadingFor(tabKey);
+    setIsTabLoading(true);
+  }
 
   useEffect(() => {
-    setIsTabLoading(true);
     const timer = setTimeout(() => {
       setIsTabLoading(false);
     }, 300);
@@ -842,71 +856,109 @@ export default function TournamentRankings({
     }
 
     return (
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">Rank</TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead className="w-20">Wins</TableHead>
-              <TableHead className="w-20">Losses</TableHead>
-              <TableHead className="w-24">Points</TableHead>
-              <TableHead className="w-24">Opp Wins</TableHead>
-              <TableHead className="w-24">Opp Points</TableHead>
-              <TableHead className="w-20">H2H</TableHead>
-              <TableHead className="w-32">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {currentRankings.map((team: TeamRanking) => (
-              <TableRow key={team.team_id}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <RankingBadge rank={team.rank} />
-                    <span className="font-bold">{team.rank}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div>
-                    <div className="font-semibold">{team.team_name}</div>
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
-                      {team.school_name && <span>{team.school_name}</span>}
-                      {team.school_type && <Badge variant="outline" className="text-xs">{team.school_type}</Badge>}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span className="text-green-600 font-bold">{team.total_wins || 0}</span>
-                </TableCell>
-                <TableCell>
-                  <span className="text-red-600">{team.total_losses || 0}</span>
-                </TableCell>
-                <TableCell>
-                  <span className="font-semibold">{team.total_points || 0}</span>
-                </TableCell>
-                <TableCell>
-                  <span>{team.opponents_total_wins || 0}</span>
-                </TableCell>
-                <TableCell>
-                  <span>{(team.opponents_total_points || 0).toFixed(1)}</span>
-                </TableCell>
-                <TableCell>
-                  <span>{team.head_to_head_wins || 0}</span>
-                </TableCell>
-                <TableCell>
-                  {team.eliminated_in_round ? (
-                    <Badge variant="secondary">
-                      Elim R{team.eliminated_in_round}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Active</Badge>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <ResponsiveTable
+        rows={currentRankings}
+        rowKey={(team: TeamRanking) => team.team_id}
+        columns={[
+          {
+            id: "rank",
+            header: "Rank",
+            className: "w-16",
+            priority: "summary",
+            cell: (team: TeamRanking) => (
+              <div className="flex items-center gap-2">
+                <RankingBadge rank={team.rank} />
+                <span className="font-bold">{team.rank}</span>
+              </div>
+            ),
+          },
+          {
+            id: "team",
+            header: "Team",
+            priority: "primary",
+            cell: (team: TeamRanking) => <span className="font-semibold">{team.team_name}</span>,
+          },
+          {
+            id: "school",
+            header: "School",
+            priority: "secondary",
+            className: "hidden",
+            cell: (team: TeamRanking) => (
+              <span className="flex items-center gap-1">
+                {team.school_name && <span>{team.school_name}</span>}
+                {team.school_type && (
+                  <Badge variant="outline" className="text-xs">{team.school_type}</Badge>
+                )}
+              </span>
+            ),
+          },
+          {
+            id: "wins",
+            header: "Wins",
+            className: "w-20",
+            priority: "summary",
+            cell: (team: TeamRanking) => (
+              <span className="text-green-600 font-bold">{team.total_wins || 0}</span>
+            ),
+          },
+          {
+            id: "losses",
+            header: "Losses",
+            className: "w-20",
+            priority: "summary",
+            cell: (team: TeamRanking) => (
+              <span className="text-red-600">{team.total_losses || 0}</span>
+            ),
+          },
+          {
+            id: "points",
+            header: "Points",
+            className: "w-24",
+            priority: "summary",
+            cell: (team: TeamRanking) => (
+              <span className="font-semibold">{team.total_points || 0}</span>
+            ),
+          },
+          {
+            id: "oppWins",
+            header: "Opp Wins",
+            cardLabel: "Opponent wins",
+            className: "w-24",
+            priority: "detail",
+            cell: (team: TeamRanking) => <span>{team.opponents_total_wins || 0}</span>,
+          },
+          {
+            id: "oppPoints",
+            header: "Opp Points",
+            cardLabel: "Opponent points",
+            className: "w-24",
+            priority: "detail",
+            cell: (team: TeamRanking) => (
+              <span>{(team.opponents_total_points || 0).toFixed(1)}</span>
+            ),
+          },
+          {
+            id: "h2h",
+            header: "H2H",
+            cardLabel: "Head to head",
+            className: "w-20",
+            priority: "detail",
+            cell: (team: TeamRanking) => <span>{team.head_to_head_wins || 0}</span>,
+          },
+          {
+            id: "status",
+            header: "Status",
+            className: "w-32",
+            priority: "summary",
+            cell: (team: TeamRanking) =>
+              team.eliminated_in_round ? (
+                <Badge variant="secondary">Elim R{team.eliminated_in_round}</Badge>
+              ) : (
+                <Badge variant="outline">Active</Badge>
+              ),
+          },
+        ]}
+      />
     );
   };
 
@@ -1322,7 +1374,7 @@ export default function TournamentRankings({
           </Card>
 
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
               <TabsTrigger value="teams" className="flex items-center gap-2">
                 <UsersRound className="h-4 w-4" />
                 <span className="hidden custom:inline">Teams</span>

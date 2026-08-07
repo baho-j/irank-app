@@ -70,15 +70,22 @@ export default function DateRangePicker({
     (dateRange as DateTimeRange)?.toTime || defaultToTime
   )
 
-  React.useEffect(() => {
-    if (dateRange) {
-      setDate({ from: dateRange.from, to: dateRange.to })
-      if (includeTime && 'fromTime' in dateRange) {
-        setFromTime(dateRange.fromTime || defaultFromTime)
-        setToTime(dateRange.toTime || defaultToTime)
-      }
+  // Re-seeded when the caller supplies a different range, not on every render
+  // of the same one, so a half-finished selection is not overwritten.
+  const rangeKey = dateRange
+    ? `${dateRange.from?.getTime() ?? ""}-${dateRange.to?.getTime() ?? ""}`
+    : ""
+  const [seededFor, setSeededFor] = React.useState(rangeKey)
+
+  if (dateRange && rangeKey !== seededFor) {
+    setSeededFor(rangeKey)
+    setDate({ from: dateRange.from, to: dateRange.to })
+
+    if (includeTime && 'fromTime' in dateRange) {
+      setFromTime(dateRange.fromTime || defaultFromTime)
+      setToTime(dateRange.toTime || defaultToTime)
     }
-  }, [dateRange, includeTime, defaultFromTime, defaultToTime])
+  }
 
   const handleDateChange = (newDate: DateRange | undefined) => {
     setDate(newDate)

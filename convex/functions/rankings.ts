@@ -263,7 +263,7 @@ const computeTeamRankings = async (
     for (const score of debateScores) {
       for (const speakerScore of score.speaker_scores) {
         const currentPoints = teamPointsFromJudges.get(speakerScore.team_id) || 0;
-        teamPointsFromJudges.set(speakerScore.team_id, currentPoints + speakerScore.score);
+        teamPointsFromJudges.set(speakerScore.team_id, currentPoints + speakerScore.total);
       }
     }
 
@@ -637,7 +637,7 @@ const computeStudentCrossTournamentPerformance = async (
     for (const score of tournamentScores) {
       for (const speakerScore of score.speaker_scores) {
         if (speakerScore.speaker_id === speakerId) {
-          speakerTournamentPoints += speakerScore.score;
+          speakerTournamentPoints += speakerScore.total;
         }
       }
     }
@@ -650,7 +650,7 @@ const computeStudentCrossTournamentPerformance = async (
       for (const score of tournamentScores) {
         for (const speakerScore of score.speaker_scores) {
           const current = allSpeakerStats.get(speakerScore.speaker_id) || 0;
-          allSpeakerStats.set(speakerScore.speaker_id, current + speakerScore.score);
+          allSpeakerStats.set(speakerScore.speaker_id, current + speakerScore.total);
         }
       }
 
@@ -738,9 +738,9 @@ const computeStudentRankings = async (
       }
 
       const speakerStat = speakerStats.get(speakerScore.speaker_id)!;
-      speakerStat.total_points += speakerScore.score;
-      speakerStat.scores.push(speakerScore.score);
-      speakerStat.highest_score = Math.max(speakerStat.highest_score, speakerScore.score);
+      speakerStat.total_points += speakerScore.total;
+      speakerStat.scores.push(speakerScore.total);
+      speakerStat.highest_score = Math.max(speakerStat.highest_score, speakerScore.total);
       speakerStat.debates_count++;
     }
   }
@@ -1438,10 +1438,39 @@ export const updateRankingRelease = mutation({
       throw new Error(`Invalid roles: ${invalidRoles.join(', ')}`);
     }
 
+    const previous = tournament.ranking_released;
+
     await ctx.db.patch(args.tournament_id, {
       ranking_released: args.ranking_settings,
       updated_at: Date.now(),
     });
+
+    // Only scopes newly opened trigger mail, so re-saving the settings does
+    // not send the announcement a second time.
+    for (const scope of ["prelims", "full_tournament"] as const) {
+      const now = args.ranking_settings[scope];
+      const before = previous?.[scope];
+
+      const newlyReleased = {
+        students: now.students && !before?.students,
+        teams: now.teams && !before?.teams,
+        schools: now.schools && !before?.schools,
+      };
+
+      if (!newlyReleased.students && !newlyReleased.teams && !newlyReleased.schools) {
+        continue;
+      }
+
+      await ctx.scheduler.runAfter(
+        0,
+        internal.functions.notification_emails.announceRankingRelease,
+        {
+          tournament_id: args.tournament_id,
+          scope,
+          released: newlyReleased,
+        }
+      );
+    }
 
     await ctx.runMutation(internal.functions.audit.createAuditLog, {
       user_id: sessionResult.user.id,

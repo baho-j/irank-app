@@ -253,7 +253,6 @@ function PublicReports() {
   const searchParams = useSearchParams()
   const token = params.token as string
   const viewIncrementedRef = useRef(false)
-  const [reportError, setReportError] = useState<string | null>(null)
 
   const sections = useMemo(() => {
     const sectionsParam = searchParams.get('sections')
@@ -265,18 +264,13 @@ function PublicReports() {
     token ? { access_token: token } : "skip"
   )
 
+  // Derived from the query rather than mirrored into state by an effect.
+  const reportError =
+    reportData && !reportData.success
+      ? reportData.error || "Unknown error occurred"
+      : null
+
   const incrementViewCount = useMutation(api.functions.admin.analytics.incrementViewCount)
-
-  useEffect(() => {
-    if (reportData && !reportData.success) {
-      setReportError(reportData.error || "Unknown error occurred")
-      return
-    }
-
-    if (reportData?.success && reportError) {
-      setReportError(null)
-    }
-  }, [reportData, reportError])
 
   useEffect(() => {
     if (token && reportData?.success && !viewIncrementedRef.current) {
@@ -423,7 +417,7 @@ function PublicReports() {
                 description="Growth metrics overview"
               >
                 <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                     <div>
                       <div className="text-2xl font-bold text-green-600">
                         {overview.growth_metrics?.tournaments > 0 ? '+' : ''}{overview.growth_metrics?.tournaments?.toFixed(1) || '0'}%

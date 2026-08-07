@@ -133,13 +133,16 @@ export function LeagueList({ userRole, token, selectedLeagueId, onLeagueSelect, 
     }
   }, [leaguesData, page])
 
-  useEffect(() => {
-    if (debouncedSearch !== "" || leagues.length > 0) {
-      setPage(1)
-      setLeagues([])
-      setHasMore(true)
-    }
-  }, [debouncedSearch])
+  // A new search starts a new accumulated list, applied during render so the
+  // stale results are never shown against the new term.
+  const [searchedFor, setSearchedFor] = useState(debouncedSearch)
+
+  if (debouncedSearch !== searchedFor) {
+    setSearchedFor(debouncedSearch)
+    setPage(1)
+    setLeagues([])
+    setHasMore(true)
+  }
 
   const loadMore = useCallback(() => {
     if (hasMore && !isLoadingMore && leaguesData) {

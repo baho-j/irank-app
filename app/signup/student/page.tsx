@@ -6,7 +6,7 @@ import Image from "next/image"
 
 export default function StudentSignUp() {
   return (
-    <div className="flex min-h-screen dark:bg-gray-900">
+    <div className="flex min-h-dvh dark:bg-gray-900">
 
       <div className="hidden md:block md:w-1/2 bg-cover bg-center relative overflow-hidden">
 
@@ -14,6 +14,7 @@ export default function StudentSignUp() {
           src="/images/students-signup.png"
           alt="Student signup background"
           fill
+          sizes="(max-width: 768px) 0px, 50vw"
           className="object-cover"
           priority
         />
@@ -57,7 +58,7 @@ export default function StudentSignUp() {
         </div>
       </div>
 
-      <div className="w-full md:w-1/2 flex items-center justify-center p-6">
+      <div className="w-full md:w-1/2 flex items-center justify-center overflow-y-auto p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}

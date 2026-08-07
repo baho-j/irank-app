@@ -660,10 +660,14 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean
   }
 >(({ className, showIcon = false, ...props }, ref) => {
-  // Random width between 50 to 90%.
+  // Varied widths so the placeholder reads as a list rather than a block.
+  // Derived from the row's identity, not random, so the server and client
+  // render the same width and hydration does not mismatch.
+  const id = React.useId()
   const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+    const hash = [...id].reduce((total, char) => total + char.charCodeAt(0), 0)
+    return `${50 + (hash % 40)}%`
+  }, [id])
 
   return (
     <div

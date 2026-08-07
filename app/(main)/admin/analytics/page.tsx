@@ -54,7 +54,7 @@ import {
   Camera,
   AlertTriangle, SquareChartGantt, DollarSign, BarChart2, Copy, Check
 } from "lucide-react";
-import * as XLSX from 'xlsx'
+import { downloadExcel } from '@/lib/export/excel'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { useDebounce } from "@/hooks/use-debounce"
@@ -306,7 +306,7 @@ function ShareReportDialog({
 
             <div className="space-y-3">
               <Label>Sections to Include</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {sections.map((section) => (
                   <div key={section.id} className="flex items-center space-x-2">
                     <Checkbox
@@ -322,7 +322,7 @@ function ShareReportDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="expiration">Expires in (days)</Label>
                 <Select value={expirationDays} onValueChange={setExpirationDays}>
@@ -418,10 +418,10 @@ function ShareReportDialog({
 
 export default function AdminAnalyticsPage() {
   const { token, user } = useAuth()
-  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>({
+  const [dateRange, setDateRange] = useState<DateTimeRange | undefined>(() => ({
     from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
     to: new Date(),
-  })
+  }))
   const [selectedLeague, setSelectedLeague] = useState<string>("all")
   const [selectedCurrency, setSelectedCurrency] = useState<"RWF" | "USD">("RWF")
   const [activeTab, setActiveTab] = useState("overview")
@@ -445,14 +445,21 @@ export default function AdminAnalyticsPage() {
     return sections
   }, [activeTab])
 
+  // Resolved once per change of range: computing it inline made a new object
+  // on every render, which resubscribed each analytics query continuously.
+  const dateWindow = useMemo(() => {
+    const start = dateRange?.from?.getTime()
+    const end = dateRange?.to?.getTime()
+
+    // Both ends come from the picker, which always supplies a full range.
+    return start !== undefined && end !== undefined ? { start, end } : undefined
+  }, [dateRange])
+
   const overviewData = useOffline(useQuery(
     api.functions.admin.analytics.getDashboardOverview,
     token && activeTab === "overview" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   ), "analytics-overview");
 
@@ -460,10 +467,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getTournamentAnalytics,
     token && activeTab === "tournaments" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       league_id: selectedLeague !== "all" ? selectedLeague as any : undefined,
     } : "skip"
   ), "analytics-tournament");
@@ -472,10 +476,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getUserAnalytics,
     token && activeTab === "users" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   ), "analytics-users");
 
@@ -483,10 +484,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getFinancialAnalytics,
     token && activeTab === "financial" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       currency: selectedCurrency,
     } : "skip"
   ), "analytics-financial");
@@ -495,10 +493,7 @@ export default function AdminAnalyticsPage() {
     api.functions.admin.analytics.getPerformanceAnalytics,
     token && activeTab === "performance" ? {
       token,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
     } : "skip"
   ), "analytics-performance");
 
@@ -508,10 +503,7 @@ export default function AdminAnalyticsPage() {
       token,
       export_format: "csv" as const,
       sections: activeSections,
-      date_range: dateRange ? {
-        start: dateRange.from?.getTime() || Date.now() - (30 * 24 * 60 * 60 * 1000),
-        end: dateRange.to?.getTime() || Date.now(),
-      } : undefined,
+      date_range: dateWindow,
       filters: currentFilters,
     } : "skip"
   )
@@ -602,78 +594,43 @@ export default function AdminAnalyticsPage() {
     }
 
     try {
-      const workbook = XLSX.utils.book_new()
+      const timestamp = new Date().toISOString().split('T')[0]
 
-      if (exportData.overview) {
-        const overviewWS = XLSX.utils.json_to_sheet([
+      const overviewRows = exportData.overview
+        ? [
           { Metric: "Total Tournaments", Value: exportData.overview.total_tournaments },
           { Metric: "Active Tournaments", Value: exportData.overview.active_tournaments },
           { Metric: "Total Users", Value: exportData.overview.total_users },
           { Metric: "Total Schools", Value: exportData.overview.total_schools },
           { Metric: "Total Debates", Value: exportData.overview.total_debates },
-        ])
-        XLSX.utils.book_append_sheet(workbook, overviewWS, "Overview")
-      }
+        ]
+        : []
 
-      if (exportData.tournaments?.tournament_trends) {
-        const trendsWS = XLSX.utils.json_to_sheet(exportData.tournaments.tournament_trends)
-        XLSX.utils.book_append_sheet(workbook, trendsWS, "Tournament Trends")
-      }
-
-      if (exportData.tournaments?.format_distribution) {
-        const formatWS = XLSX.utils.json_to_sheet(exportData.tournaments.format_distribution)
-        XLSX.utils.book_append_sheet(workbook, formatWS, "Format Distribution")
-      }
-
-      if (exportData.users?.user_growth) {
-        const userGrowthWS = XLSX.utils.json_to_sheet(exportData.users.user_growth)
-        XLSX.utils.book_append_sheet(workbook, userGrowthWS, "User Growth")
-      }
-
-      if (exportData.users?.role_distribution) {
-        const roleWS = XLSX.utils.json_to_sheet(exportData.users.role_distribution)
-        XLSX.utils.book_append_sheet(workbook, roleWS, "Role Distribution")
-      }
-
-      if (exportData.financial) {
-        if (exportData.financial.revenue_trends) {
-          const revenueWS = XLSX.utils.json_to_sheet(exportData.financial.revenue_trends)
-          XLSX.utils.book_append_sheet(workbook, revenueWS, "Revenue Trends")
-        }
-
-        if (exportData.financial.payment_distribution) {
-          const paymentWS = XLSX.utils.json_to_sheet(exportData.financial.payment_distribution)
-          XLSX.utils.book_append_sheet(workbook, paymentWS, "Payment Methods")
-        }
-
-        if (exportData.financial.tournament_revenue) {
-          const tourneyRevenueWS = XLSX.utils.json_to_sheet(exportData.financial.tournament_revenue)
-          XLSX.utils.book_append_sheet(workbook, tourneyRevenueWS, "Tournament Revenue")
-        }
-      }
-
-      if (exportData.performance) {
-        if (exportData.performance.tournament_rankings) {
-          const rankingsWS = XLSX.utils.json_to_sheet(exportData.performance.tournament_rankings.map((t: { tournament_name: any; format: any; date: string | number | Date; team_rankings: string | any[]; speaker_rankings: string | any[] }) => ({
+      await downloadExcel([
+        { name: "Overview", rows: overviewRows },
+        { name: "Tournament Trends", rows: exportData.tournaments?.tournament_trends ?? [] },
+        { name: "Format Distribution", rows: exportData.tournaments?.format_distribution ?? [] },
+        { name: "User Growth", rows: exportData.users?.user_growth ?? [] },
+        { name: "Role Distribution", rows: exportData.users?.role_distribution ?? [] },
+        { name: "Revenue Trends", rows: exportData.financial?.revenue_trends ?? [] },
+        { name: "Payment Methods", rows: exportData.financial?.payment_distribution ?? [] },
+        { name: "Tournament Revenue", rows: exportData.financial?.tournament_revenue ?? [] },
+        {
+          name: "Tournament Rankings",
+          rows: (exportData.performance?.tournament_rankings ?? []).map((t: { tournament_name: any; format: any; date: string | number | Date; team_rankings: string | any[]; speaker_rankings: string | any[] }) => ({
             tournament: t.tournament_name,
             format: t.format,
             date: new Date(t.date).toLocaleDateString(),
             teams_count: t.team_rankings.length,
-            speakers_count: t.speaker_rankings.length
-          })))
-          XLSX.utils.book_append_sheet(workbook, rankingsWS, "Tournament Rankings")
-        }
+            speakers_count: t.speaker_rankings.length,
+          })),
+        },
+        {
+          name: "Judge Consistency",
+          rows: exportData.performance?.judge_performance?.consistency_scores ?? [],
+        },
+      ], `iRankHub-Analytics-${timestamp}.xlsx`)
 
-        if (exportData.performance.judge_performance?.consistency_scores) {
-          const judgeConsistencyWS = XLSX.utils.json_to_sheet(exportData.performance.judge_performance.consistency_scores)
-          XLSX.utils.book_append_sheet(workbook, judgeConsistencyWS, "Judge Consistency")
-        }
-      }
-
-      const timestamp = new Date().toISOString().split('T')[0]
-      const filename = `iRankHub-Analytics-${timestamp}.xlsx`
-
-      XLSX.writeFile(workbook, filename)
       toast.success("Excel file downloaded successfully!")
     } catch (error) {
       console.error('Error exporting to Excel:', error)
@@ -905,7 +862,7 @@ export default function AdminAnalyticsPage() {
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="hidden md:grid w-full grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1045,7 +1002,7 @@ export default function AdminAnalyticsPage() {
                   loading={!overviewData}
                 >
                   <div className="space-y-4 py-4">
-                    <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                       <div>
                         <div className="text-2xl font-bold text-green-600">
                           {overviewData?.growth_metrics?.tournaments != null
@@ -1264,7 +1221,7 @@ export default function AdminAnalyticsPage() {
                 >
                   {tournamentData?.participation_metrics && (
                     <div className="space-y-6 py-4">
-                      <div className="grid grid-cols-2 gap-4 text-center">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
                         <div>
                           <div className="text-3xl font-bold text-primary">
                             {tournamentData.participation_metrics.schools_participated}

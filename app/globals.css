@@ -133,3 +133,55 @@
     display: none;
   }
 }
+
+/**
+ * Scrollbars follow the theme rather than the operating system.
+ *
+ * Built on the existing tokens, so light and dark are handled by the same
+ * rules and a change to the palette carries through here too.
+ */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.45) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--primary) / 0.45);
+    border-radius: 9999px;
+    /* Inset by a transparent border so the thumb reads as a slim pill rather
+       than filling the gutter edge to edge. */
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--primary) / 0.75);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background-color: hsl(var(--primary));
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* A touch device shows its own overlay scrollbar; ours would only take up
+     room that the content needs. */
+  @media (pointer: coarse) {
+    *::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+  }
+}

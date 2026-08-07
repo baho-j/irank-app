@@ -6,11 +6,17 @@ import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { toast } from "sonner"
+import { useHydrated } from "@/hooks/use-hydrated";
+import {
+  isAuthenticated as isAuthenticatedState,
+  isLoading as isLoadingState,
+} from "@/hooks/session-state";
+import { useSyncExternalStore } from "react";
 
 type UserRole = "student" | "school_admin" | "volunteer" | "admin"
 
 type User = {
-  id: string
+  id: Id<"users">
   name: string
   email: string
   phone?: string
@@ -158,26 +164,74 @@ function getErrorMessage(error: string): string {
   return "Something went wrong. Please try again or contact support if the problem persists.";
 }
 
+function subscribeToConnectivity(onChange: () => void) {
+  window.addEventListener("online", onChange)
+  window.addEventListener("offline", onChange)
+
+  return () => {
+    window.removeEventListener("online", onChange)
+    window.removeEventListener("offline", onChange)
+  }
+}
+
+function readStoredSession(): { token: string | null; user: User | null } {
+  if (typeof window === "undefined") return { token: null, user: null }
+
+  const token = localStorage.getItem(TOKEN_KEY)
+  const rawUser = localStorage.getItem(USER_KEY)
+
+  if (!token || !rawUser) return { token: null, user: null }
+
+  try {
+    return { token, user: JSON.parse(rawUser) as User }
+  } catch {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+    return { token: null, user: null }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null)
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // Read on the first render rather than in an effect: an effect leaves one
+  // paint showing a signed-out app to someone who is signed in.
+  const [stored] = useState(() => readStoredSession())
+
+  const [token, setToken] = useState<string | null>(stored.token)
+  const [user, setUser] = useState<User | null>(stored.user)
+
+  // A token restored from localStorage has not been checked by the server yet.
+  // It may name a session that expired, was revoked, or belongs to a wiped
+  // deployment. Callers must treat that as still-loading rather than signed in,
+  // or they fire authenticated requests with a token the server will reject.
+  const [sessionChecked, setSessionChecked] = useState(!stored.token)
+
+  /** A token issued by the server during this session needs no re-check. */
+  const acceptToken = (issued: string) => {
+    setToken(issued)
+    setSessionChecked(true)
+  }
+  const [isLoading, setIsLoading] = useState(false)
+
+  // The server cannot read the device's session, so callers must not act on
+  // "not signed in" until the client has hydrated and the real answer is known.
+  const hydrated = useHydrated()
   const router = useRouter()
   const pathname = usePathname()
 
   const signUpMutation = useMutation(api.functions.auth.signUp)
   const signInMutation = useMutation(api.functions.auth.signIn)
+  const recordSignInAttemptMutation = useMutation(api.functions.auth.recordSignInAttempt)
   const signInWithPhoneMutation = useMutation(api.functions.auth.signInWithPhone)
   const signOutMutation = useMutation(api.functions.auth.signOut)
   const generateMagicLinkMutation = useMutation(api.functions.auth.generateMagicLink)
   const verifyMagicLinkMutation = useMutation(api.functions.auth.verifyMagicLink)
   const resetPasswordMutation = useMutation(api.functions.auth.resetPassword)
+  const recordPasswordResetAttemptMutation = useMutation(api.functions.auth.recordPasswordResetAttempt)
   const changePasswordMutation = useMutation(api.functions.auth.changePassword)
   const enableMFAMutation = useMutation(api.functions.auth.enableMFA)
   const disableMFAMutation = useMutation(api.functions.auth.disableMFA)
   const updateSecurityQuestionMutation = useMutation(api.functions.auth.updateSecurityQuestion)
   const sendWelcomeEmail = useAction(api.functions.email.sendWelcomeEmail);
-  const sendMagicLinkEmail = useAction(api.functions.email.sendMagicLinkEmail);
 
   const currentUser = useQuery(
     api.functions.auth.getCurrentUser,
@@ -196,22 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [pathname, user, router]);
 
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    const storedUser = localStorage.getItem(USER_KEY)
 
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken)
-        setUser(JSON.parse(storedUser))
-      } catch (error) {
-        console.error("Error parsing stored user data:", error)
-        localStorage.removeItem(TOKEN_KEY)
-        localStorage.removeItem(USER_KEY)
-      }
-    }
-    setIsLoading(false)
-  }, [])
 
   const getDeviceInfo = () => ({
     user_agent: navigator.userAgent,
@@ -234,22 +273,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const handleSignOut = async () => {
-    if (token) {
-      try {
-        await signOutMutation({
-          token,
-          device_id: localStorage.getItem("device_id") || undefined,
-        })
-      } catch (error) {
-        console.error("Error during sign out:", error)
-      }
-    }
+    const previousToken = token
 
+    // Cleared before the server is told, not after: every feature hook keys off
+    // `token`, so awaiting a round-trip first leaves them querying with a token
+    // that is already dead.
     setToken(null)
     setUser(null)
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     router.push("/")
+
+    if (previousToken) {
+      try {
+        await signOutMutation({
+          token: previousToken,
+          device_id: localStorage.getItem("device_id") || undefined,
+        })
+      } catch {
+        // The session is gone locally either way; a failed revoke is not worth
+        // surfacing, and an expired token has nothing left to revoke.
+      }
+    }
   }
 
   useEffect(() => {
@@ -257,12 +302,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (currentUser) {
         setUser({
           ...currentUser,
+          id: currentUser.id as Id<"users">,
           role: currentUser.role as UserRole,
         })
         localStorage.setItem(USER_KEY, JSON.stringify(currentUser))
       } else if (token) {
         handleSignOut()
       }
+      setSessionChecked(true)
       setIsLoading(false)
     }
   }, [currentUser, token])
@@ -304,6 +351,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
 
+      // Counted in its own mutation first: a failed sign-in rolls back its own
+      // writes, so counting inside it would only limit successful attempts.
+      const allowed = await recordSignInAttemptMutation({ identifier: email })
+
+      if (!allowed.ok) {
+        toast.error(allowed.message)
+        return { success: false, message: allowed.message }
+      }
+
       const result = await signInMutation({
         email,
         password,
@@ -324,7 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (result.success && result.token && result.user) {
-        setToken(result.token)
+        acceptToken(result.token)
 
         const userWithSchool: User = {
           ...result.user,
@@ -359,6 +415,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
 
+      const allowed = await recordSignInAttemptMutation({
+        identifier: data.phone,
+      })
+
+      if (!allowed.ok) {
+        toast.error(allowed.message)
+        return
+      }
+
       const result = await signInWithPhoneMutation({
         ...data,
         device_info: getDeviceInfo(),
@@ -366,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (result.success && result.token && result.user) {
-        setToken(result.token)
+        acceptToken(result.token)
 
         const userWithSchool: User = {
           ...result.user,
@@ -400,16 +465,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         purpose,
       })
 
+      // The mutation sends the email itself; the token is never handed to the
+      // browser, and the message is the same whether or not the address is
+      // registered.
       if (result.success) {
-        try {
-          await sendMagicLinkEmail({
-            email,
-            purpose,
-            token: result.token,
-          });
-        } catch (err) {
-          console.error("Failed to send magic link email:", err);
-        }
         toast.success(result.message)
       }
     } catch (error: any) {
@@ -431,7 +490,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (result.success) {
         if (result.purpose === "login" && result.token && result.user) {
-          setToken(result.token)
+          acceptToken(result.token)
 
           const userWithSchool: User = {
             ...result.user,
@@ -465,6 +524,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (resetToken: string, newPassword: string) => {
     try {
+      // Counted first so a rejected token still consumes the attempt.
+      const allowed = await recordPasswordResetAttemptMutation({
+        reset_token: resetToken,
+      })
+
+      if (!allowed.ok) {
+        toast.error(allowed.message)
+        return
+      }
+
       const result = await resetPasswordMutation({
         reset_token: resetToken,
         new_password: newPassword,
@@ -570,11 +639,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const sessionState = { token, user, sessionChecked, busy: isLoading, hydrated }
+
   const value: AuthContextType = {
     user,
     token,
-    isAuthenticated: !!token && !!user,
-    isLoading,
+    isAuthenticated: isAuthenticatedState(sessionState),
+    isLoading: isLoadingState(sessionState),
     clearAuth,
     signUp,
     signIn,
@@ -660,36 +731,32 @@ export function useRoleAccess() {
 }
 
 export function useOfflineSync() {
-  const [isOffline, setIsOffline] = useState(false)
-  const [isOfflineValid, setIsOfflineValid] = useState(false)
+  // Connectivity is browser state, so it is read from the browser rather than
+  // mirrored into React state by an effect.
+  const isOffline = useSyncExternalStore(
+    subscribeToConnectivity,
+    () => !navigator.onLine,
+    () => false
+  )
+
+  const isOfflineValid =
+    isOffline &&
+    typeof window !== "undefined" &&
+    !!localStorage.getItem(TOKEN_KEY) &&
+    !!localStorage.getItem(USER_KEY)
+
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle")
 
+  // A brief "syncing" flag when the connection returns.
   useEffect(() => {
     const handleOnline = () => {
-      setIsOffline(false)
       setSyncStatus("syncing")
       setTimeout(() => setSyncStatus("idle"), 2000)
     }
 
-    const handleOffline = () => {
-      setIsOffline(true)
-      const hasOfflineData = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(USER_KEY)
-      setIsOfflineValid(!!hasOfflineData)
-    }
-
-    setIsOffline(!navigator.onLine)
-    if (!navigator.onLine) {
-      const hasOfflineData = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(USER_KEY)
-      setIsOfflineValid(!!hasOfflineData)
-    }
-
     window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
 
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
+    return () => window.removeEventListener("online", handleOnline)
   }, [])
 
   return {

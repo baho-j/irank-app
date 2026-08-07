@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 const loadingMessages = [
   "Warming up our debate muscles...",
@@ -36,31 +37,20 @@ const loadingMessages = [
 ]
 
 export default function AppLoader() {
-  const [message, setMessage] = useState("")
-  const [isAnimating, setIsAnimating] = useState(false)
-  const messageRef = useRef("")
+  // Picked on the device: choosing during the first render would give the
+  // server and the client different text and break hydration.
+  const hydrated = useHydrated()
+  const [rotation, setRotation] = useState(0)
+  const [seed] = useState(() => Math.random())
+
+  const message = hydrated
+    ? loadingMessages[Math.floor((seed + rotation * 0.37) * loadingMessages.length) % loadingMessages.length]
+    : ""
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-
-    setIsAnimating(true)
-
-    const firstMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)]
-    setMessage(firstMessage)
-    messageRef.current = firstMessage
-
     const startRotation = () => {
-      intervalRef.current = setInterval(() => {
-        let newMessage
-        let attempts = 0
-        do {
-          newMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)]
-          attempts++
-        } while (newMessage === messageRef.current && attempts < 5)
-
-        messageRef.current = newMessage
-        setMessage(newMessage)
-      }, 1500)
+      intervalRef.current = setInterval(() => setRotation(step => step + 1), 1500)
     }
 
     const timeout = setTimeout(startRotation, 1000)
@@ -79,9 +69,9 @@ export default function AppLoader() {
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 53 53"
-          className={`w-full h-full ${isAnimating ? 'animate-pulse' : ''}`}
+          className="w-full h-full animate-pulse"
           style={{
-            animation: isAnimating ? 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
+            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
           }}
         >
           <g>

@@ -1,6 +1,7 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
+import { countableForRole, isCountableBallot } from "../../lib/ranking_release";
 import { Id, Doc } from "../../_generated/dataModel";
 
 export const getStudentDashboardStats = query({
@@ -128,10 +129,12 @@ export const getStudentRankAndPosition = query({
     const allJudgingScores = await ctx.db.query("judging_scores").collect();
     const allTeams = await ctx.db.query("teams").collect();
     const allDebates = await ctx.db.query("debates").collect();
-    const allTournaments = await ctx.db
+    const allTournaments = (await ctx.db
       .query("tournaments")
       .withIndex("by_status", (q) => q.eq("status", "completed"))
-      .collect();
+      .collect()).filter((tournament) =>
+        countableForRole(tournament, "students", sessionResult.user!.role)
+      );
 
     const sortedTournaments = allTournaments.sort((a, b) => a.end_date - b.end_date);
     const latestTournament = sortedTournaments[sortedTournaments.length - 1];
@@ -210,10 +213,10 @@ const calculateStudentRankings = async (
       const studentSpeakerScores = score.speaker_scores.filter((ss: { speaker_id: any; }) => ss.speaker_id === studentUser._id);
 
       for (const speakerScore of studentSpeakerScores) {
-        totalSpeakerPoints += speakerScore.score;
+        totalSpeakerPoints += speakerScore.total;
         scoresCount++;
-        highestIndividualScore = Math.max(highestIndividualScore, speakerScore.score);
-        individualScores.push(speakerScore.score);
+        highestIndividualScore = Math.max(highestIndividualScore, speakerScore.total);
+        individualScores.push(speakerScore.total);
       }
     }
 
@@ -346,7 +349,7 @@ export const getStudentPerformanceTrend = query({
       for (const score of tournamentScores) {
         const studentSpeakerScores = score.speaker_scores.filter(ss => ss.speaker_id === student.id);
         for (const speakerScore of studentSpeakerScores) {
-          studentTotalPoints += speakerScore.score;
+          studentTotalPoints += speakerScore.total;
           studentScoreCount++;
         }
       }
@@ -360,7 +363,7 @@ export const getStudentPerformanceTrend = query({
 
       for (const score of tournamentScores) {
         for (const speakerScore of score.speaker_scores) {
-          allPointsInTournament += speakerScore.score;
+          allPointsInTournament += speakerScore.total;
           allScoreCountInTournament++;
         }
       }
@@ -408,13 +411,44 @@ export const getStudentLeaderboard = query({
       .withIndex("by_role_status", (q) => q.eq("role", "student").eq("status", "active"))
       .collect();
 
-    const allJudgingScores = await ctx.db.query("judging_scores").collect();
+    const role = sessionResult.user.role;
+
+    const allTournaments = await ctx.db
+      .query("tournaments")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .collect();
+
+    const countableTournamentIds = new Set(
+      allTournaments
+        .filter((tournament) => countableForRole(tournament, "students", role))
+        .map((tournament) => tournament._id)
+    );
+
     const allTeams = await ctx.db.query("teams").collect();
+
+    const countableTeamIds = new Set(
+      allTeams
+        .filter((team) => countableTournamentIds.has(team.tournament_id))
+        .map((team) => team._id)
+    );
+
+    const allDebates = await ctx.db.query("debates").collect();
+    const countableDebateIds = new Set(
+      allDebates
+        .filter((debate) => countableTournamentIds.has(debate.tournament_id))
+        .map((debate) => debate._id)
+    );
+
+    const allJudgingScores = (await ctx.db.query("judging_scores").collect()).filter(
+      (score) => isCountableBallot(score) && countableDebateIds.has(score.debate_id)
+    );
 
     const studentsWithPerformance = [];
 
     for (const student of allStudents) {
-      const studentTeams = allTeams.filter(t => t.members.includes(student._id));
+      const studentTeams = allTeams.filter(
+        (t) => t.members.includes(student._id) && countableTeamIds.has(t._id)
+      );
 
       if (studentTeams.length === 0) continue;
 
@@ -425,7 +459,7 @@ export const getStudentLeaderboard = query({
         const studentSpeakerScores = score.speaker_scores.filter(ss => ss.speaker_id === student._id);
 
         for (const speakerScore of studentSpeakerScores) {
-          totalPoints += speakerScore.score;
+          totalPoints += speakerScore.total;
           scoresCount++;
         }
       }
@@ -439,8 +473,8 @@ export const getStudentLeaderboard = query({
           profile_image: student.profile_image,
           totalPoints: Math.round(totalPoints),
           avgPoints: Math.round(avgPoints * 10) / 10,
-          tournamentsCount: studentTeams.length,
-          rankChange: Math.random() > 0.6 ? 1 : Math.random() > 0.3 ? -1 : 0,
+          tournamentsCount: new Set(studentTeams.map((t) => t.tournament_id)).size,
+          rankChange: 0,
         });
       }
     }

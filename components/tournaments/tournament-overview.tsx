@@ -651,6 +651,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
             src={imageUrl}
             alt={tournament.name}
             fill
+            sizes="(max-width: 768px) 100vw, 75vw"
             className="object-cover"
           />
           <div className="absolute inset-0 bg-black/50" />
@@ -1046,7 +1047,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
               
               {editingCard === 'structure' && isAdmin ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="edit-format">Format</Label>
                       <Select
@@ -1092,7 +1093,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="edit-prelim-rounds">Prelim Rounds</Label>
                       <Input
@@ -1182,7 +1183,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
                 </div>
               ) : (
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Team Size</Label>
                     <div className="flex items-center gap-2">
@@ -1371,7 +1372,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
               
               {editingCard === 'speaking' && isAdmin ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {Array.from({ length: tournament.team_size }, (_, i) => i + 1).map((speakerNum) => (
                       <div key={speakerNum} className="space-y-2">
                         <Label htmlFor={`edit-speaker${speakerNum}`} className="text-sm">
@@ -1411,7 +1412,7 @@ export function TournamentOverview({ tournament, userRole, token, onSlugChange }
                 </div>
               ) : (
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {Object.entries(tournament.speaking_times as Record<string, number> || {}).map(([speaker, time]) => (
                     <div key={speaker} className="flex items-center gap-2 p-2 bg-muted rounded">
                       <Clock className="h-3 w-3 text-muted-foreground" />

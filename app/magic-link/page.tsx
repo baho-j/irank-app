@@ -13,17 +13,20 @@ import { useAuth } from "@/hooks/use-auth"
 import AppLoader from "@/components/app-loader";
 
 function MagicLinkForm() {
-  const [verifying, setVerifying] = useState(true)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const token = searchParams.get("token")
+
+  // A missing token needs no request, so it is known before the first paint.
+  const [verifying, setVerifying] = useState(!!token)
   const [success, setSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    token ? null : "Invalid or missing magic link token"
+  )
   const [userInfo, setUserInfo] = useState<any>(null)
 
   const hasVerified = useRef(false)
   const verificationInProgress = useRef(false)
-
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const token = searchParams.get("token")
 
   const { verifyMagicLink } = useAuth()
 
@@ -82,9 +85,6 @@ function MagicLinkForm() {
 
     if (token && !hasVerified.current && !verificationInProgress.current) {
       verifyToken()
-    } else if (!token) {
-      setError("Invalid or missing magic link token")
-      setVerifying(false)
     }
   }, [])
 

@@ -3,12 +3,25 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "./use-auth";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 export function useNotifications() {
   const { user, isAuthenticated, token, clearAuth } = useAuth();
   const router = useRouter();
-  const [isSupported, setIsSupported] = useState(false);
-  const [permission, setPermission] = useState<NotificationPermission>("default");
+  // Browser capabilities, so they are read on the device rather than assumed
+  // and then corrected. Hydration gates them, since the server has neither.
+  const hydrated = useHydrated();
+
+  const isSupported =
+    hydrated &&
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window;
+
+  const [grantedPermission, setPermission] = useState<NotificationPermission | null>(null);
+  const permission: NotificationPermission =
+    grantedPermission ?? (isSupported ? Notification.permission : "default");
 
   const getUserNotificationsMutation = useMutation(api.functions.notifications.getUserNotifications);
   const getUnreadCountMutation = useMutation(api.functions.notifications.getUnreadCount);
@@ -23,9 +36,9 @@ export function useNotifications() {
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isLoadingUnreadCount, setIsLoadingUnreadCount] = useState(false);
 
+  // An expired or revoked session is ordinary, not a failure worth logging.
   const handleAuthError = (error: any) => {
-    if (error.message && error.message.toLowerCase().includes("authentication required")) {
-      console.error("Authentication failed, redirecting to login:", error);
+    if (error?.message?.toLowerCase().includes("authentication required")) {
       clearAuth();
       router.push("/");
       return true;
@@ -44,10 +57,8 @@ export function useNotifications() {
       });
       setNotifications(result);
     } catch (error: any) {
-      console.error("Failed to load notifications:", error);
       if (!handleAuthError(error)) {
-
-        console.error("Notification loading error:", error);
+        console.error("Failed to load notifications:", error);
       }
     } finally {
       setIsLoadingNotifications(false);
@@ -62,10 +73,8 @@ export function useNotifications() {
       const result = await getUnreadCountMutation({ token });
       setUnreadCount(result);
     } catch (error: any) {
-      console.error("Failed to load unread count:", error);
       if (!handleAuthError(error)) {
-
-        console.error("Unread count loading error:", error);
+        console.error("Failed to load unread count:", error);
       }
     } finally {
       setIsLoadingUnreadCount(false);
@@ -82,17 +91,7 @@ export function useNotifications() {
     }
   }, [isAuthenticated, user, token]);
 
-  useEffect(() => {
-    setIsSupported(
-      'Notification' in window &&
-      'serviceWorker' in navigator &&
-      'PushManager' in window
-    );
 
-    if ('Notification' in window) {
-      setPermission(Notification.permission);
-    }
-  }, []);
 
   const requestPermission = async (): Promise<boolean> => {
     if (!isSupported) {
@@ -270,14 +269,14 @@ export function useNotifications() {
   };
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding)
     .replace(/-/g, '+')
     .replace(/_/g, '/');
 
   const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+  const outputArray = new Uint8Array(new ArrayBuffer(rawData.length));
 
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);

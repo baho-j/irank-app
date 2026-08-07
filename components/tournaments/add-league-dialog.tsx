@@ -196,14 +196,16 @@ export function AddLeagueDialog({ open, onOpenChange, token }: AddLeagueDialogPr
     }
   }, [validateForm, token, createLeague, formData, formatGeographicScope, onOpenChange, resetForm])
 
-  useEffect(() => {
+  // A local league is always Rwanda, applied when the type is chosen.
+  const [typedFor, setTypedFor] = useState(formData.type)
+
+  if (formData.type !== typedFor) {
+    setTypedFor(formData.type)
+
     if (formData.type === "Local" && selectedLocations.countries.length === 0) {
-      setSelectedLocations(prev => ({
-        ...prev,
-        countries: ["RW"]
-      }))
+      setSelectedLocations(prev => ({ ...prev, countries: ["RW"] }))
     }
-  }, [formData.type])
+  }
 
   const showGeographicScope = formData.type === "Local" || formData.type === "International"
 

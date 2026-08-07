@@ -1,6 +1,6 @@
 "use node";
 
-import { action } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 import {
@@ -9,7 +9,11 @@ import {
   PushSubscriptionData,
 } from "../lib/push_service";
 
-export const sendPushToUser = action({
+/**
+ * Delivers one user's push. Internal because it is only ever reached through
+ * the notification pool, which bounds how many are in flight at once.
+ */
+export const sendPushToUser = internalAction({
   args: {
     user_id: v.id("users"),
     notification_id: v.id("notifications"),

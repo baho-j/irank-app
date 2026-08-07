@@ -57,6 +57,7 @@ import { FileUpload } from "@/components/file-upload"
 import { VolunteerSchoolSelector } from "@/components/school-selector"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { TOURNAMENT_FORMATS, isSupportedFormat, WORLD_SCHOOLS_TEAM_SIZE } from "@/lib/tournament-formats"
 import { format } from "date-fns"
 import {
   ChevronDown,
@@ -104,14 +105,6 @@ interface FormData {
   }>
   image?: Id<"_storage">
 }
-
-const FORMATS = [
-  { value: "WorldSchools", label: "World Schools" },
-  { value: "BritishParliamentary", label: "British Parliamentary" },
-  { value: "PublicForum", label: "Public Forum" },
-  { value: "LincolnDouglas", label: "Lincoln Douglas" },
-  { value: "OxfordStyle", label: "Oxford Style" }
-]
 
 const DEFAULT_SPEAKING_TIMES = {
   WorldSchools: { speaker1: 5, speaker2: 5, speaker3: 5 },
@@ -190,9 +183,18 @@ export default function CreateTournamentPage() {
   const coordinators = coordinatorsData || []
   const selectedCoordinator = coordinators.find(c => c._id === formData.coordinatorId)
 
-  useEffect(() => {
+  // Motion slots follow the round counts. Rebuilt only when those change, so
+  // motions already typed in are carried across rather than reset.
+  const roundsKey = `${formData.prelimRounds}-${formData.eliminationRounds}`
+  const [motionsFor, setMotionsFor] = useState(roundsKey)
+
+  if (roundsKey !== motionsFor) {
+    setMotionsFor(roundsKey)
+
     const newMotions: Record<string, any> = {}
-    const now = Date.now()
+    // Unset until the organiser schedules it. Zero reads as "not released"
+    // server-side, so a motion is never exposed before it is meant to be.
+    const unscheduled = 0
 
     for (let i = 1; i <= formData.prelimRounds; i++) {
       const key = `preliminary_${i}`
@@ -201,7 +203,7 @@ export default function CreateTournamentPage() {
         newMotions[key] = {
           motion: "",
           round: i,
-          releaseTime: isLastPrelimRound ? 0 : now
+          releaseTime: unscheduled
         }
       } else {
         newMotions[key] = formData.motions[key]
@@ -214,7 +216,7 @@ export default function CreateTournamentPage() {
         newMotions[key] = {
           motion: "",
           round: i,
-          releaseTime: now
+          releaseTime: unscheduled
         }
       } else {
         newMotions[key] = formData.motions[key]
@@ -222,18 +224,28 @@ export default function CreateTournamentPage() {
     }
 
     setFormData(prev => ({ ...prev, motions: newMotions }))
-  }, [formData.prelimRounds, formData.eliminationRounds])
+  }
 
-  useEffect(() => {
+  // Reset to the format's defaults when the format or team size changes, and
+  // only then, so times the organiser has adjusted are not overwritten.
+  const speakingKey = `${formData.format}-${formData.teamSize}`
+  const [speakingFor, setSpeakingFor] = useState(speakingKey)
+
+  if (speakingKey !== speakingFor) {
+    setSpeakingFor(speakingKey)
+
     const defaultTimes = DEFAULT_SPEAKING_TIMES[formData.format as keyof typeof DEFAULT_SPEAKING_TIMES]
+
     if (defaultTimes) {
       const newSpeakingTimes: Record<string, number> = {}
+
       for (let i = 1; i <= formData.teamSize; i++) {
         newSpeakingTimes[`speaker${i}`] = defaultTimes[`speaker${i}` as keyof typeof defaultTimes] || 8
       }
+
       setFormData(prev => ({ ...prev, speakingTimes: newSpeakingTimes }))
     }
-  }, [formData.format, formData.teamSize])
+  }
 
   useEffect(() => {
     if (formData.image) {
@@ -368,8 +380,12 @@ export default function CreateTournamentPage() {
       newErrors.teamSize = "Team size must be between 1 and 5"
     }
 
-    if (formData.format === "WorldSchools" && formData.teamSize > 3) {
-      newErrors.teamSize = "World Schools format allows maximum 3 speakers"
+    if (!isSupportedFormat(formData.format)) {
+      newErrors.format = "Only World Schools tournaments are supported at the moment"
+    }
+
+    if (formData.format === "WorldSchools" && formData.teamSize !== WORLD_SCHOOLS_TEAM_SIZE) {
+      newErrors.teamSize = `World Schools requires exactly ${WORLD_SCHOOLS_TEAM_SIZE} speakers per team`
     }
 
     if (formData.prelimRounds < 1 ) {
@@ -493,6 +509,7 @@ export default function CreateTournamentPage() {
             src={imageUrl}
             alt="Tournament banner"
             fill
+            sizes="(max-width: 768px) 100vw, 75vw"
             className="object-cover"
           />
           <div className="absolute inset-0 bg-black/40" />
@@ -711,7 +728,7 @@ export default function CreateTournamentPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="format">Format</Label>
                   <Select
@@ -722,9 +739,20 @@ export default function CreateTournamentPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {FORMATS.map((format) => (
-                        <SelectItem key={format.value} value={format.value}>
-                          {format.label}
+                      {TOURNAMENT_FORMATS.map((format) => (
+                        <SelectItem
+                          key={format.value}
+                          value={format.value}
+                          disabled={!format.supported}
+                        >
+                          <span className="flex items-center gap-2">
+                            {format.label}
+                            {!format.supported && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                Coming soon
+                              </Badge>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -745,7 +773,7 @@ export default function CreateTournamentPage() {
                         <SelectItem
                           key={size}
                           value={size.toString()}
-                          disabled={formData.format === "WorldSchools" && size > 3}
+                          disabled={formData.format === "WorldSchools" && size !== WORLD_SCHOOLS_TEAM_SIZE}
                         >
                           {size} speaker{size > 1 ? "s" : ""}
                         </SelectItem>
@@ -758,7 +786,7 @@ export default function CreateTournamentPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="prelimRounds">Prelim Rounds</Label>
                   <Input
@@ -901,7 +929,7 @@ export default function CreateTournamentPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {Array.from({ length: formData.teamSize }, (_, i) => i + 1).map((speakerNum) => (
                     <div key={speakerNum} className="space-y-2">
                       <Label htmlFor={`speaker${speakerNum}`} className="text-sm">

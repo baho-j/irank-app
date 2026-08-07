@@ -331,11 +331,11 @@ export function TournamentInvitations({
     return tabs;
   }, [isAdmin, tournament.status]);
 
-  useEffect(() => {
-    if (availableTabs.length > 0 && !availableTabs.find(tab => tab.value === activeTab)) {
-      setActiveTab(availableTabs[0].value);
-    }
-  }, [availableTabs, activeTab]);
+  // Falls back to the first available tab when the chosen one disappears,
+  // applied while rendering so no pass shows an empty panel.
+  if (availableTabs.length > 0 && !availableTabs.some(tab => tab.value === activeTab)) {
+    setActiveTab(availableTabs[0].value);
+  }
 
   const invitationsQuery = isAdmin
     ? api.functions.admin.invitations.getTournamentInvitations
@@ -423,9 +423,15 @@ export function TournamentInvitations({
   const sendInvitationEmail = useAction(api.functions.email.sendTournamentInvitationEmail);
   const sendBulkInvitationEmails = useAction(api.functions.email.sendBulkTournamentInvitationEmails);
 
-  useEffect(() => {
+  // Back to the first page when the filters change, without a second render
+  // pass to correct an out-of-range page.
+  const filterKey = JSON.stringify([debouncedSearch, statusFilter, typeFilter, activeTab]);
+  const [pagedFor, setPagedFor] = useState(filterKey);
+
+  if (filterKey !== pagedFor) {
+    setPagedFor(filterKey);
     setPage(1);
-  }, [debouncedSearch, statusFilter, typeFilter, activeTab]);
+  }
 
   const currentData = activeTab === "invitations" ? invitationsData : potentialInviteesData;
   const isLoading = currentData === undefined;

@@ -173,14 +173,22 @@ export function TournamentList({ userRole, token, selectedLeagueId, className }:
 
   const isAdmin = userRole === "admin"
 
-  useEffect(() => {
+  // Back to the first page when the filters change, without a second render
+  // pass to correct an out-of-range page.
+  const filterKey = JSON.stringify([debouncedSearch, statusFilter, formatFilter, typeFilter, selectedLeagueId])
+  const [pagedFor, setPagedFor] = useState(filterKey)
+
+  if (filterKey !== pagedFor) {
+    setPagedFor(filterKey)
     setPage(1)
-  }, [debouncedSearch, statusFilter, formatFilter, typeFilter, selectedLeagueId])
+  }
+
+  const allTournaments = tournamentsData?.tournaments
 
   const filteredTournaments = useMemo(() => {
-    if (!tournamentsData?.tournaments) return []
+    if (!allTournaments) return []
 
-    return tournamentsData.tournaments.filter(tournament => {
+    return allTournaments.filter(tournament => {
       if (statusFilter.length > 0 && !statusFilter.includes(tournament.status)) {
         return false
       }
@@ -198,7 +206,7 @@ export function TournamentList({ userRole, token, selectedLeagueId, className }:
 
       return true
     })
-  }, [tournamentsData?.tournaments, statusFilter, formatFilter, typeFilter])
+  }, [allTournaments, statusFilter, formatFilter, typeFilter])
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)

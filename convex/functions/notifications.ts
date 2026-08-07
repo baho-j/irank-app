@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
+import { notificationPool } from "../lib/pools";
 
 export const createNotification = mutation({
   args: {
@@ -46,7 +47,7 @@ export const createNotification = mutation({
     });
 
     if (args.send_push) {
-      await ctx.scheduler.runAfter(0, api.functions.alerts.sendPushToUser, {
+      await notificationPool.enqueueAction(ctx, internal.functions.alerts.sendPushToUser, {
         user_id: args.user_id,
         notification_id: notificationId,
         title: args.title,
@@ -104,21 +105,86 @@ export const sendBulkNotifications = mutation({
     );
 
     if (args.send_push) {
-      await Promise.all(
-        args.user_ids.map((user_id, index) =>
-          ctx.scheduler.runAfter(index * 100, api.functions.alerts.sendPushToUser, {
-            notification_id: notifications[index],
-            user_id,
-            title: args.title,
-            message: args.message,
-            type: args.type,
-            related_id: args.related_id,
-          })
-        )
+      // The pool caps how many are in flight, so the previous hand-rolled
+      // stagger is no longer needed.
+      await notificationPool.enqueueActionBatch(
+        ctx,
+        internal.functions.alerts.sendPushToUser,
+        args.user_ids.map((user_id, index) => ({
+          notification_id: notifications[index],
+          user_id,
+          title: args.title,
+          message: args.message,
+          type: args.type,
+          related_id: args.related_id,
+        }))
       );
     }
 
     return { created: notifications.length };
+  },
+});
+
+/**
+ * Notifies a known set of users, for events the system raises itself rather
+ * than a signed-in person: a round closing, a motion being released. There is
+ * no session to verify, so the caller must already have decided who to reach.
+ */
+export const notifyUsers = internalMutation({
+  args: {
+    user_ids: v.array(v.id("users")),
+    title: v.string(),
+    message: v.string(),
+    type: v.union(
+      v.literal("tournament"),
+      v.literal("debate"),
+      v.literal("result"),
+      v.literal("system"),
+      v.literal("auth")
+    ),
+    related_id: v.optional(v.string()),
+    send_push: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<{ created: number }> => {
+    const unique = Array.from(new Set(args.user_ids));
+    const now = Date.now();
+
+    const notificationIds = await Promise.all(
+      unique.map((user_id) =>
+        ctx.db.insert("notifications", {
+          user_id,
+          title: args.title,
+          message: args.message,
+          type: args.type,
+          related_id: args.related_id,
+          is_read: false,
+          expires_at: now + 30 * 24 * 60 * 60 * 1000,
+          sent_via_email: false,
+          sent_via_push: false,
+          sent_via_sms: false,
+          created_at: now,
+        })
+      )
+    );
+
+    if (args.send_push !== false) {
+      // The pool caps how many are in flight, so a whole tournament can be
+      // notified at once without bursting the push service.
+      await notificationPool.enqueueActionBatch(
+        ctx,
+        internal.functions.alerts.sendPushToUser,
+        unique.map((user_id, index) => ({
+          user_id,
+          notification_id: notificationIds[index],
+          title: args.title,
+          message: args.message,
+          type: args.type,
+          related_id: args.related_id,
+        }))
+      );
+    }
+
+    return { created: unique.length };
   },
 });
 

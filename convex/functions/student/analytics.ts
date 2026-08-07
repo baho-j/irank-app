@@ -142,11 +142,11 @@ export const getStudentPerformanceAnalytics = query({
     studentJudgingScores.forEach(score => {
       const studentScore = score.speaker_scores?.find(s => s.speaker_id === user.id);
       if (studentScore) {
-        totalSpeakerPoints += studentScore.score;
-        totalScore += studentScore.score;
+        totalSpeakerPoints += studentScore.total;
+        totalScore += studentScore.total;
         scoreCount++;
 
-        const approximateRank = Math.max(1, Math.ceil((1 - (studentScore.score / 30)) * 100));
+        const approximateRank = Math.max(1, Math.ceil((1 - (studentScore.total / 30)) * 100));
         ranks.push(approximateRank);
       }
     });
@@ -212,8 +212,8 @@ export const getStudentPerformanceAnalytics = query({
         const teamRank = teamTotal > 0 ? Math.max(1, Math.ceil((1 - (teamWins / teamTotal)) * 50)) : 999;
 
         const previousScore = index > 0 ? studentJudgingScores[index - 1].speaker_scores?.find(s => s.speaker_id === user.id) : null;
-        const currentSpeakerRank = studentScore ? Math.max(1, Math.ceil((1 - (studentScore.score / 30)) * 100)) : 999;
-        const previousSpeakerRank = previousScore ? Math.max(1, Math.ceil((1 - (previousScore.score / 30)) * 100)) : 999;
+        const currentSpeakerRank = studentScore ? Math.max(1, Math.ceil((1 - (studentScore.total / 30)) * 100)) : 999;
+        const previousSpeakerRank = previousScore ? Math.max(1, Math.ceil((1 - (previousScore.total / 30)) * 100)) : 999;
 
         const improvementFromPrevious = previousScore ? previousSpeakerRank - currentSpeakerRank : 0;
 
@@ -221,9 +221,9 @@ export const getStudentPerformanceAnalytics = query({
           tournament_name: tournament?.name || "Unknown",
           date: tournament?.start_date || Date.now(),
           speaker_rank: currentSpeakerRank,
-          speaker_points: studentScore?.score || 0,
+          speaker_points: studentScore?.total || 0,
           team_rank: teamRank,
-          avg_score: studentScore?.score || 0,
+          avg_score: studentScore?.total || 0,
           improvement_from_previous: improvementFromPrevious,
         };
       })
@@ -280,12 +280,12 @@ export const getStudentPerformanceAnalytics = query({
         .filter(score => teamDebates.some(d => d._id === score.debate_id))
         .reduce((sum, score) => {
           const speakerScore = score.speaker_scores?.find(s => s.speaker_id === user.id);
-          return sum + (speakerScore?.score || 0);
+          return sum + (speakerScore?.total || 0);
         }, 0);
 
       const partnerPoints = partnerJudgingScores.reduce((sum, score) => {
         const speakerScore = score.speaker_scores?.find(s => s.speaker_id === partner);
-        return sum + (speakerScore?.score || 0);
+        return sum + (speakerScore?.total || 0);
       }, 0);
 
       const combinedPoints = studentPoints + partnerPoints;
@@ -347,7 +347,7 @@ export const getStudentPerformanceAnalytics = query({
         feedback: [],
       };
 
-      judgeStats.scores.push(studentScore.score);
+      judgeStats.scores.push(studentScore.total);
       if (studentScore.comments) {
         judgeStats.feedback.push(studentScore.comments);
       }
@@ -363,7 +363,7 @@ export const getStudentPerformanceAnalytics = query({
           if (words.includes(word)) {
             const current = strengthsMap.get(word) || { frequency: 0, scores: [] };
             current.frequency++;
-            current.scores.push(studentScore.score);
+            current.scores.push(studentScore.total);
             strengthsMap.set(word, current);
           }
         });
@@ -372,7 +372,7 @@ export const getStudentPerformanceAnalytics = query({
           if (words.includes(word)) {
             const current = weaknessesMap.get(word) || { frequency: 0, priority: 0 };
             current.frequency++;
-            current.priority += studentScore.score < 20 ? 3 : studentScore.score < 25 ? 2 : 1;
+            current.priority += studentScore.total < 20 ? 3 : studentScore.total < 25 ? 2 : 1;
             weaknessesMap.set(word, current);
           }
         });
@@ -431,7 +431,7 @@ export const getStudentPerformanceAnalytics = query({
 
       const avgScore = periodScores.reduce((sum, score) => {
         const studentScore = score.speaker_scores?.find(s => s.speaker_id === user.id);
-        return sum + (studentScore?.score || 0);
+        return sum + (studentScore?.total || 0);
       }, 0) / periodScores.length;
 
       const improvementNotes = periodScores

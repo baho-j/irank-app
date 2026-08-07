@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (.env.example is committed as the documented contract)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,8 +41,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Ignored for the template, you probably want to remove it:
-package-lock.json
-
 .idea
 .idea/
+.vapid.tmp.json
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# reference documents, not source
+*.pdf

@@ -1,4 +1,5 @@
-import { mutation, query } from "../../_generated/server";
+import { query } from "../../_generated/server";
+import { mutation } from "../../lib/aggregates";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { Id } from "../../_generated/dataModel";
@@ -89,8 +90,8 @@ export const createTournament = mutation({
       throw new Error("Team size must be between 1 and 5");
     }
 
-    if (tournamentData.format === "WorldSchools" && tournamentData.team_size > 3) {
-      throw new Error("World Schools format allows maximum 3 speakers per team");
+    if (tournamentData.format === "WorldSchools" && tournamentData.team_size !== 3) {
+      throw new Error("World Schools requires exactly 3 speakers per team");
     }
 
     if (tournamentData.league_id) {
@@ -264,8 +265,8 @@ export const updateTournament = mutation({
       throw new Error("Team size must be between 1 and 5");
     }
 
-    if (updateData.format === "WorldSchools" && updateData.team_size > 3) {
-      throw new Error("World Schools format allows maximum 3 speakers per team");
+    if (updateData.format === "WorldSchools" && updateData.team_size !== 3) {
+      throw new Error("World Schools requires exactly 3 speakers per team");
     }
 
     const duplicateTournament = await ctx.db
@@ -327,6 +328,16 @@ export const updateTournament = mutation({
       slug: finalSlug,
       updated_at: Date.now(),
     });
+
+    // Thank the participating schools the moment the tournament closes, and
+    // only on the transition, so re-saving a completed tournament is silent.
+    if (updateData.status === "completed" && existingTournament.status !== "completed") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.functions.notification_emails.thankSchoolsForTournament,
+        { tournament_id }
+      );
+    }
 
     if (motions) {
 
@@ -853,5 +864,56 @@ export const getCoordinators = query({
     });
 
     return sortedUsers;
+  },
+});
+/**
+ * Releases an impromptu round's motion at the moment the tab team chooses,
+ * and tells everyone who needs it. Motions must not be visible before this.
+ */
+export const releaseMotion = mutation({
+  args: {
+    token: v.string(),
+    round_id: v.id("rounds"),
+    /** Omit to release now; set a future time to schedule it. */
+    release_at: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; release_at?: number }> => {
+    const sessionResult = await ctx.runMutation(internal.functions.auth.verifySession, {
+      token: args.token,
+    });
+
+    if (!sessionResult.valid || !sessionResult.user || sessionResult.user.role !== "admin") {
+      throw new Error("Admin access required");
+    }
+
+    const round = await ctx.db.get(args.round_id);
+
+    if (!round) {
+      throw new Error("Round not found");
+    }
+
+    const now = Date.now();
+
+    if (round.motion_released_at && round.motion_released_at <= now) {
+      throw new Error("This motion has already been released");
+    }
+
+    const releaseAt = args.release_at ?? now;
+
+    if (releaseAt < now) {
+      throw new Error("A motion cannot be released in the past");
+    }
+
+    await ctx.db.patch(args.round_id, { motion_released_at: releaseAt });
+
+    // Scheduling the notification at the release moment is what makes every
+    // room learn the motion at the same time.
+    await ctx.scheduler.runAt(
+      releaseAt,
+      internal.functions.notification_emails.sendMotionReleasedEmails,
+      { tournament_id: round.tournament_id, round_id: args.round_id }
+    );
+
+    return { success: true, release_at: releaseAt };
   },
 });

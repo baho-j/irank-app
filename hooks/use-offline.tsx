@@ -2,6 +2,8 @@
 
 import { useConvexOfflineDetector } from "@/lib/pwa/offline-detector";
 import { useEffect, useState, useRef } from "react";
+import { useOutbox } from "@/lib/offline/use-outbox";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 interface CacheItem<T = any> {
   data: T;
@@ -221,24 +223,6 @@ function isMutationFunction<T>(value: T): value is T extends Function ? T : neve
   return typeof value === 'function';
 }
 
-function generateCacheKey(): string {
-  const stack: string = new Error().stack || '';
-  const lines: string[] = stack.split('\n');
-
-  for (let i = 0; i < lines.length; i++) {
-    const line: string = lines[i];
-    if (line.includes('.tsx') || line.includes('.jsx')) {
-      const match: RegExpMatchArray | null = line.match(/\/([^\/]+)\.(tsx|jsx):(\d+)/) || line.match(/\/([^\/]+)\.(tsx|jsx)/);
-      if (match) {
-        const fileName: string = match[1];
-        const lineNumber: string = match[3] || 'unknown';
-        return `${fileName}_line_${lineNumber}`;
-      }
-    }
-  }
-
-  return `offline_query_${Math.random().toString(36).substring(2, 8)}`;
-}
 
 interface UseOfflineReturn<T> {
   data: T;
@@ -250,23 +234,16 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
   const { isOffline } = useConvexOfflineDetector();
   const [cachedData, setCachedData] = useState<T | null>(null);
   const [isFromCache, setIsFromCache] = useState<boolean>(false);
-  const [mounted, setMounted] = useState<boolean>(false);
   const manager = useRef<SimpleOfflineManager>(SimpleOfflineManager.getInstance());
-  const generatedKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // IndexedDB is only reachable on the device, so caching waits for hydration.
+  const hydrated = useHydrated();
 
-  if (!generatedKeyRef.current) {
-    generatedKeyRef.current = cacheKey || generateCacheKey();
-  }
-
-  const finalCacheKey: string = cacheKey || generatedKeyRef.current;
+  const finalCacheKey: string | null = cacheKey ?? null;
 
   useEffect(() => {
 
-    if (!mounted || typeof window === 'undefined') {
+    if (!hydrated || !finalCacheKey || typeof window === 'undefined') {
       return;
     }
 
@@ -308,7 +285,7 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
         setIsFromCache(false);
       }
     }
-  }, [hookResult, isOffline, finalCacheKey, mounted]);
+  }, [hookResult, isOffline, finalCacheKey, hydrated]);
 
   if (isQueryResult(hookResult)) {
     if (isOffline && isFromCache && cachedData !== null) {
@@ -324,10 +301,8 @@ export function useOffline<T>(hookResult: T, cacheKey?: string): T {
   return hookResult;
 }
 
-export function useOfflineSync(): { queueCount: number } {
-  const [queueCount] = useState<number>(0); // Placeholder for now
-
-  return { queueCount };
+export function useOfflineSync() {
+  return useOutbox();
 }
 
 export function useOfflineState<T>(hookResult: T, cacheKey?: string): UseOfflineReturn<T> {

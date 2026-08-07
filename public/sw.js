@@ -250,7 +250,7 @@ function isNextJSAsset(url) {
     url.pathname.startsWith('/static/');
 }
 
-//TODO: Background sync for offline mutations (to be implemented in Phase 3)
+
 self.addEventListener('sync', (event) => {
   console.log('[SW] Background sync triggered:', event.tag);
 
@@ -259,12 +259,14 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-//TODO: Placeholder for mutation sync (Phase 3)
+// Wakes the page, which owns the IndexedDB outbox, to drain it.
 async function syncOfflineMutations() {
-  console.log('[SW] Syncing offline mutations...');
+  const clientList = await self.clients.matchAll({ includeUncontrolled: true });
+
+  clientList.forEach((client) => client.postMessage({ type: 'SYNC_OUTBOX' }));
 }
 
-//TODO: Push notification handling (Phase 4)
+
 self.addEventListener('push', (event) => {
   console.log('[SW] Push notification received');
 
@@ -273,8 +275,8 @@ self.addEventListener('push', (event) => {
   const data = event.data.json();
   const options = {
     body: data.body,
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
     tag: data.tag || 'irank-notification',
     data: data.data || {},
     actions: data.actions || [],

@@ -4,9 +4,13 @@ import { useEffect, useState } from "react"
 import VolunteerSignUpForm from "@/components/auth/signup/volunteer-signup-form"
 import { motion } from "framer-motion"
 import Image from "next/image"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 export default function VolunteerSignUp() {
-  const [volunteerImage, setVolunteerImage] = useState<string>("")
+  // Chosen once per visit on the device. Picking during the first render
+  // would give the server and the client different images.
+  const hydrated = useHydrated()
+  const [pick] = useState(() => Math.random())
 
   const volunteerImages = [
     "/images/volunteer1.jpg",
@@ -14,18 +18,18 @@ export default function VolunteerSignUp() {
     "/images/volunteer3.jpg",
   ]
 
-  useEffect(() => {
-    const randomIndex = Math.floor(Math.random() * volunteerImages.length)
-    setVolunteerImage(volunteerImages[randomIndex])
-  }, [])
+  const volunteerImage = hydrated
+    ? volunteerImages[Math.floor(pick * volunteerImages.length)]
+    : volunteerImages[0]
 
   return (
-    <div className="flex min-h-screen dark:bg-gray-900">
+    <div className="flex min-h-dvh dark:bg-gray-900">
       <div className="hidden md:block md:w-1/2 bg-cover bg-center relative overflow-hidden">
         <Image
           src={volunteerImage}
           alt="Volunteer signup background"
           fill
+          sizes="(max-width: 768px) 0px, 50vw"
           className="object-cover"
           priority
         />
@@ -69,7 +73,7 @@ export default function VolunteerSignUp() {
         </div>
       </div>
 
-      <div className="w-full md:w-1/2 flex items-center justify-center p-6">
+      <div className="w-full md:w-1/2 flex items-center justify-center overflow-y-auto p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
