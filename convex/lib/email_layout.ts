@@ -25,6 +25,16 @@ export function logoUrl(): string {
   return `${siteUrl()}/images/logo.png`;
 }
 
+/** Escapes text interpolated into an email — names and titles are user data. */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface EmailButton {
   label: string;
   url: string;
@@ -40,9 +50,11 @@ export function renderEmail(options: {
   greeting?: string;
   body: string;
   button?: EmailButton;
+  /** Shown beside the primary button, outlined rather than filled. */
+  secondaryButton?: EmailButton;
   footerNote?: string;
 }): string {
-  const { title, preheader, greeting, body, button, footerNote } = options;
+  const { title, preheader, greeting, body, button, secondaryButton, footerNote } = options;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -58,8 +70,8 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;"
     <td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:${BRAND.surface};border:1px solid ${BRAND.border};border-radius:12px;overflow:hidden;">
         <tr>
-          <td style="background:${BRAND.darkBlue};padding:20px 28px;">
-            <img src="${logoUrl()}" alt="iRank" height="34" style="height:34px;display:block;border:0;">
+          <td align="center" style="background:${BRAND.surface};padding:32px 28px 8px;border-bottom:3px solid ${BRAND.primary};">
+            <img src="${logoUrl()}" alt="iDebate Rwanda" height="88" style="height:88px;width:auto;display:block;border:0;margin:0 auto;">
           </td>
         </tr>
         <tr>
@@ -69,9 +81,17 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;"
             <div style="font-size:15px;line-height:1.65;color:${BRAND.ink};">${body}</div>
             ${button
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px 0 6px;">
-                   <tr><td style="border-radius:8px;background:${BRAND.primary};">
-                     <a href="${button.url}" style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">${button.label}</a>
-                   </td></tr>
+                   <tr>
+                     <td style="border-radius:8px;background:${BRAND.primary};">
+                       <a href="${button.url}" style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">${button.label}</a>
+                     </td>
+                     ${secondaryButton
+        ? `<td style="width:12px;"></td>
+                        <td style="border-radius:8px;border:1px solid ${BRAND.border};">
+                          <a href="${secondaryButton.url}" style="display:inline-block;padding:11px 23px;font-size:15px;font-weight:600;color:${BRAND.muted};text-decoration:none;border-radius:8px;">${secondaryButton.label}</a>
+                        </td>`
+        : ""}
+                   </tr>
                  </table>
                  <p style="margin:10px 0 0;font-size:12px;color:${BRAND.muted};word-break:break-all;">Or paste this into your browser: ${button.url}</p>`
       : ""}

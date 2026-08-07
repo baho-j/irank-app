@@ -7,6 +7,10 @@ import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { toast } from "sonner"
 import { useHydrated } from "@/hooks/use-hydrated";
+import {
+  isAuthenticated as isAuthenticatedState,
+  isLoading as isLoadingState,
+} from "@/hooks/session-state";
 import { useSyncExternalStore } from "react";
 
 type UserRole = "student" | "school_admin" | "volunteer" | "admin"
@@ -194,6 +198,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [token, setToken] = useState<string | null>(stored.token)
   const [user, setUser] = useState<User | null>(stored.user)
+
+  // A token restored from localStorage has not been checked by the server yet.
+  // It may name a session that expired, was revoked, or belongs to a wiped
+  // deployment. Callers must treat that as still-loading rather than signed in,
+  // or they fire authenticated requests with a token the server will reject.
+  const [sessionChecked, setSessionChecked] = useState(!stored.token)
+
+  /** A token issued by the server during this session needs no re-check. */
+  const acceptToken = (issued: string) => {
+    setToken(issued)
+    setSessionChecked(true)
+  }
   const [isLoading, setIsLoading] = useState(false)
 
   // The server cannot read the device's session, so callers must not act on
@@ -257,22 +273,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const handleSignOut = async () => {
-    if (token) {
-      try {
-        await signOutMutation({
-          token,
-          device_id: localStorage.getItem("device_id") || undefined,
-        })
-      } catch (error) {
-        console.error("Error during sign out:", error)
-      }
-    }
+    const previousToken = token
 
+    // Cleared before the server is told, not after: every feature hook keys off
+    // `token`, so awaiting a round-trip first leaves them querying with a token
+    // that is already dead.
     setToken(null)
     setUser(null)
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     router.push("/")
+
+    if (previousToken) {
+      try {
+        await signOutMutation({
+          token: previousToken,
+          device_id: localStorage.getItem("device_id") || undefined,
+        })
+      } catch {
+        // The session is gone locally either way; a failed revoke is not worth
+        // surfacing, and an expired token has nothing left to revoke.
+      }
+    }
   }
 
   useEffect(() => {
@@ -287,6 +309,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (token) {
         handleSignOut()
       }
+      setSessionChecked(true)
       setIsLoading(false)
     }
   }, [currentUser, token])
@@ -357,7 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (result.success && result.token && result.user) {
-        setToken(result.token)
+        acceptToken(result.token)
 
         const userWithSchool: User = {
           ...result.user,
@@ -408,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (result.success && result.token && result.user) {
-        setToken(result.token)
+        acceptToken(result.token)
 
         const userWithSchool: User = {
           ...result.user,
@@ -467,7 +490,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (result.success) {
         if (result.purpose === "login" && result.token && result.user) {
-          setToken(result.token)
+          acceptToken(result.token)
 
           const userWithSchool: User = {
             ...result.user,
@@ -616,11 +639,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const sessionState = { token, user, sessionChecked, busy: isLoading, hydrated }
+
   const value: AuthContextType = {
     user,
     token,
-    isAuthenticated: !!token && !!user,
-    isLoading: isLoading || !hydrated,
+    isAuthenticated: isAuthenticatedState(sessionState),
+    isLoading: isLoadingState(sessionState),
     clearAuth,
     signUp,
     signIn,

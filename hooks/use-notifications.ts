@@ -36,9 +36,9 @@ export function useNotifications() {
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isLoadingUnreadCount, setIsLoadingUnreadCount] = useState(false);
 
+  // An expired or revoked session is ordinary, not a failure worth logging.
   const handleAuthError = (error: any) => {
-    if (error.message && error.message.toLowerCase().includes("authentication required")) {
-      console.error("Authentication failed, redirecting to login:", error);
+    if (error?.message?.toLowerCase().includes("authentication required")) {
       clearAuth();
       router.push("/");
       return true;
@@ -57,10 +57,8 @@ export function useNotifications() {
       });
       setNotifications(result);
     } catch (error: any) {
-      console.error("Failed to load notifications:", error);
       if (!handleAuthError(error)) {
-
-        console.error("Notification loading error:", error);
+        console.error("Failed to load notifications:", error);
       }
     } finally {
       setIsLoadingNotifications(false);
@@ -75,10 +73,8 @@ export function useNotifications() {
       const result = await getUnreadCountMutation({ token });
       setUnreadCount(result);
     } catch (error: any) {
-      console.error("Failed to load unread count:", error);
       if (!handleAuthError(error)) {
-
-        console.error("Unread count loading error:", error);
+        console.error("Failed to load unread count:", error);
       }
     } finally {
       setIsLoadingUnreadCount(false);
